@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raagam — Telugu Music Player</title>
-  <link rel="stylesheet" href="style.css?v=1773383709" />
+  <link rel="stylesheet" href="style.css?v=1773383710" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%236c5ce7'/><stop offset='100%' stop-color='%23a29bfe'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M42 30v32a12 12 0 1 1-4-9V36l24-6v28a12 12 0 1 1-4-9V30L42 30z' fill='white' opacity='.95'/></svg>" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#6c5ce7" />
@@ -175,6 +175,7 @@
           <button class="ctrl-btn play-btn" id="play-btn"><svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"/></svg></button>
           <button class="ctrl-btn" id="next-btn"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16 18h2V6h-2zm-8.5-6l8.5 6V6z" transform="scale(-1,1) translate(-24,0)"/></svg></button>
           <button class="ctrl-btn heart-btn-main" id="heart-btn"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="heart-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
+          <button class="ctrl-btn download-btn" id="download-btn" title="Download for offline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         </div>
         <div id="loading" class="loading" style="display:none"><div class="spinner"></div></div>
       </div>
@@ -305,6 +306,14 @@
           </div>
         </div>
 
+        <!-- Downloads Info -->
+        <div class="profile-card">
+          <h3>📥 Downloads</h3>
+          <div class="stat-grid" style="grid-template-columns:1fr">
+            <div class="stat-card"><div class="stat-label">CACHED FOR OFFLINE</div><div class="stat-num" style="font-size:16px" id="cache-size-info">No downloads</div></div>
+          </div>
+        </div>
+
         <button class="btn-outline-sm" style="margin:16px auto;display:block" onclick="signOut()">Sign Out</button>
         <div style="height:24px"></div>
       </div>
@@ -362,10 +371,10 @@
     </nav>
   </div>
 
-  <script src="songs-db.js?v=1773383709"></script>
-  <script src="bollywood-songs-db.js?v=1773383709"></script>
-  <script src="ai-engine.js?v=1773383709"></script>
-  <script src="app.js?v=1773383709"></script>
+  <script src="songs-db.js?v=1773383710"></script>
+  <script src="bollywood-songs-db.js?v=1773383710"></script>
+  <script src="ai-engine.js?v=1773383710"></script>
+  <script src="app.js?v=1773383710"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

@@ -358,6 +358,10 @@ class AIEngine {
   getLikedSongs() {
     return this.likedSongs;
   }
+
+  trackPlay(song) {
+    // Track play for future recommendation improvements (no-op for now, extensible)
+  }
 }
 
 window.AIEngine = AIEngine;

@@ -1,4 +1,4 @@
-// app.js — Raagam v5: Auth-gated Telugu Music Player
+// app.js — Raagam v6: Auth-gated Telugu & Bollywood Music Player with Offline Support
 const audio = new Audio();
 let currentSong = null;
 let isPlaying = false;
@@ -9,10 +9,14 @@ let isLoadingNext = false;
 let syncedLyrics = [];
 let lyricsTimer = null;
 let shuffleOn = true;
-let activeLanguage = 'telugu'; // Track current playback language mode
-let consecutiveErrors = 0; // Track consecutive playback errors
+let activeLanguage = 'telugu';
+let consecutiveErrors = 0;
 let currentUser = null;
 let authMode = 'login';
+
+// Offline download tracking
+let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
+let downloadingUrls = new Set(); // Currently downloading URLs
 
 const LRCLIB_API = 'https://lrclib.net/api/search';
 
@@ -61,9 +65,9 @@ async function submitAuth() {
     return;
   }
 
-  // Static mode: localStorage-only auth (no server needed)
   try {
     document.getElementById('auth-submit').textContent = 'Loading...';
+    document.getElementById('auth-submit').disabled = true;
     const token = await hashToken(username, password);
     const storedUsers = JSON.parse(localStorage.getItem('raagam_users') || '{}');
 
@@ -72,16 +76,17 @@ async function submitAuth() {
         errEl.textContent = 'Username already taken';
         errEl.classList.remove('hidden');
         document.getElementById('auth-submit').textContent = 'Create Account';
+        document.getElementById('auth-submit').disabled = false;
         return;
       }
       storedUsers[username] = { token, displayName: display || username };
       localStorage.setItem('raagam_users', JSON.stringify(storedUsers));
     } else {
-      // Login: check if user exists. If not, auto-create for convenience
       if (storedUsers[username] && storedUsers[username].token !== token) {
         errEl.textContent = 'Wrong password';
         errEl.classList.remove('hidden');
         document.getElementById('auth-submit').textContent = 'Sign In';
+        document.getElementById('auth-submit').disabled = false;
         return;
       }
       if (!storedUsers[username]) {
@@ -98,12 +103,11 @@ async function submitAuth() {
     errEl.textContent = 'Error — ' + (e.message || 'try again');
     errEl.classList.remove('hidden');
     document.getElementById('auth-submit').textContent = authMode === 'signup' ? 'Create Account' : 'Sign In';
+    document.getElementById('auth-submit').disabled = false;
   }
 }
 
 async function hashToken(username, password) {
-  // Simple but consistent token: use the password hash as the session token
-  // Works on both HTTP and HTTPS (crypto.subtle requires secure context)
   function simpleHash(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) { h = ((h << 5) - h) + str.charCodeAt(i); h |= 0; }
@@ -126,20 +130,195 @@ function enterApp() {
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('auth-page').classList.add('hidden');
   document.getElementById('app-container').classList.remove('hidden');
+  document.getElementById('auth-submit').disabled = false;
   
-  // Update profile
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
-  document.getElementById('profile-sub-text').innerHTML = `@${currentUser.username} <span class="sync-badge">☁️ Synced</span>`;
+  document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">☁️ Synced</span>`;
   
-  // Update greeting
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   document.getElementById('home-greeting').textContent = `${greeting}, ${currentUser.displayName || currentUser.username}`;
   
+  loadDownloadedSongs();
   showPage('home');
   updateHomeStats();
   renderRecent();
   restoreLastPlayed();
+  updateCacheSize();
+}
+
+// ═══ OFFLINE / DOWNLOAD ═══
+function loadDownloadedSongs() {
+  try {
+    downloadedSongs = JSON.parse(localStorage.getItem('raagam_downloads') || '{}');
+  } catch(e) { downloadedSongs = {}; }
+}
+
+function saveDownloadedSongs() {
+  localStorage.setItem('raagam_downloads', JSON.stringify(downloadedSongs));
+}
+
+function isSongDownloaded(song) {
+  if (!song) return false;
+  return !!downloadedSongs[song.id];
+}
+
+function downloadSong(song) {
+  if (!song || !song.audio) return;
+  if (isSongDownloaded(song)) return;
+  if (downloadingUrls.has(song.audio)) return;
+  
+  downloadingUrls.add(song.audio);
+  updateDownloadButton(song, 'downloading');
+  showToast('Downloading for offline...');
+
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'CACHE_AUDIO',
+      audioUrl: song.audio,
+      imageUrl: song.image || null
+    });
+    // Store song metadata
+    downloadedSongs[song.id] = {
+      id: song.id, name: song.name, artists: song.artists,
+      image: song.image, audio: song.audio, album: song.album,
+      year: song.year, language: song.language || 'telugu'
+    };
+    saveDownloadedSongs();
+  } else {
+    // Fallback: use Cache API directly
+    caches.open('raagam-audio-v1').then(async cache => {
+      try {
+        await cache.add(song.audio);
+        if (song.image) await caches.open('raagam-v2').then(c => c.add(song.image)).catch(() => {});
+        downloadedSongs[song.id] = {
+          id: song.id, name: song.name, artists: song.artists,
+          image: song.image, audio: song.audio, album: song.album,
+          year: song.year, language: song.language || 'telugu'
+        };
+        saveDownloadedSongs();
+        downloadingUrls.delete(song.audio);
+        updateDownloadButton(song, 'downloaded');
+        showToast('Downloaded!');
+        updateCacheSize();
+      } catch(e) {
+        downloadingUrls.delete(song.audio);
+        updateDownloadButton(song, 'failed');
+        showToast('Download failed');
+      }
+    });
+  }
+}
+
+function removeDownload(songId) {
+  const song = downloadedSongs[songId];
+  if (!song) return;
+  
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: 'UNCACHE_AUDIO',
+      audioUrl: song.audio,
+      imageUrl: song.image || null
+    });
+  } else {
+    caches.open('raagam-audio-v1').then(cache => cache.delete(song.audio)).catch(() => {});
+  }
+  
+  delete downloadedSongs[songId];
+  saveDownloadedSongs();
+  showToast('Removed from downloads');
+  updateCacheSize();
+  // Re-render if on library page
+  if (document.getElementById('page-library')?.classList.contains('active')) renderLibrary();
+}
+
+function updateDownloadButton(song, state) {
+  // Update all download buttons for this song across the UI
+  document.querySelectorAll(`[data-download-id="${song.id}"]`).forEach(btn => {
+    if (state === 'downloading') {
+      btn.innerHTML = '<span class="dl-spinner"></span>';
+      btn.classList.add('downloading');
+      btn.disabled = true;
+    } else if (state === 'downloaded') {
+      btn.innerHTML = '✓';
+      btn.classList.remove('downloading');
+      btn.classList.add('downloaded');
+      btn.disabled = false;
+    } else {
+      btn.innerHTML = '↓';
+      btn.classList.remove('downloading', 'downloaded');
+      btn.disabled = false;
+    }
+  });
+  // Update player download button
+  updatePlayerDownloadBtn();
+}
+
+function updatePlayerDownloadBtn() {
+  const btn = document.getElementById('download-btn');
+  if (!btn || !currentSong) return;
+  if (downloadingUrls.has(currentSong.audio)) {
+    btn.innerHTML = '<span class="dl-spinner"></span>';
+    btn.title = 'Downloading...';
+  } else if (isSongDownloaded(currentSong)) {
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="var(--success)" stroke="none"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>';
+    btn.title = 'Downloaded — tap to remove';
+    btn.onclick = () => { removeDownload(currentSong.id); updatePlayerDownloadBtn(); };
+  } else {
+    btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+    btn.title = 'Download for offline';
+    btn.onclick = () => downloadSong(currentSong);
+  }
+}
+
+function updateCacheSize() {
+  if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: 'GET_CACHE_SIZE' });
+  } else {
+    // Direct cache check
+    caches.open('raagam-audio-v1').then(async cache => {
+      const keys = await cache.keys();
+      let totalSize = 0;
+      for (const req of keys) {
+        const resp = await cache.match(req);
+        if (resp) { const blob = await resp.clone().blob(); totalSize += blob.size; }
+      }
+      renderCacheSize(totalSize, keys.length);
+    }).catch(() => {});
+  }
+}
+
+function renderCacheSize(bytes, count) {
+  const el = document.getElementById('cache-size-info');
+  if (!el) return;
+  const dlCount = Object.keys(downloadedSongs).length;
+  if (dlCount === 0) {
+    el.textContent = 'No downloads';
+  } else {
+    const mb = (bytes / (1024 * 1024)).toFixed(1);
+    el.textContent = `${dlCount} song${dlCount !== 1 ? 's' : ''} • ${mb} MB`;
+  }
+}
+
+// Listen for SW messages
+if (navigator.serviceWorker) {
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data.type === 'CACHE_COMPLETE') {
+      const url = e.data.audioUrl;
+      downloadingUrls.delete(url);
+      // Find song by audio URL
+      const song = Object.values(downloadedSongs).find(s => s.audio === url);
+      if (song) updateDownloadButton(song, 'downloaded');
+      showToast('Downloaded!');
+      updateCacheSize();
+    }
+    if (e.data.type === 'UNCACHE_COMPLETE') {
+      updateCacheSize();
+    }
+    if (e.data.type === 'CACHE_SIZE') {
+      renderCacheSize(e.data.size, e.data.count);
+    }
+  });
 }
 
 // ═══ PLAYBACK ═══
@@ -148,13 +327,14 @@ function playRandomSong() {
   if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
     playRandomBollywood(); return;
   }
-  const prefs = window.aiEngine ? window.aiEngine.getPreferences() : null;
-  const hasPrefs = window.aiEngine && window.aiEngine.getLikedSongs().length >= 5;
+  if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB || !SongsDB.SONGS_DB.length) {
+    showToast('Songs database not loaded yet'); return;
+  }
   const excludeId = currentSong ? currentSong.id : null;
-  const song = SongsDB.getRandomSong(excludeId, hasPrefs ? prefs : null);
+  const song = SongsDB.getRandomSong(excludeId);
   if (!song) return;
-  if (currentSong) {
-    if (historyIndex >= 0 && historyIndex < history.length - 1) history = history.slice(0, historyIndex + 1);
+  if (currentSong && historyIndex >= 0 && historyIndex < history.length - 1) {
+    history = history.slice(0, historyIndex + 1);
   }
   history.push(song);
   historyIndex = history.length - 1;
@@ -163,10 +343,11 @@ function playRandomSong() {
 
 function getActiveDB() {
   if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') return BollywoodSongsDB.SONGS_DB;
-  return SongsDB.SONGS_DB;
+  return (typeof SongsDB !== 'undefined' ? SongsDB.SONGS_DB : []);
 }
 
 function playByEra(era) {
+  if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB) { showToast('Loading...'); return; }
   const ranges = { 'classics':[0,1989], '1990s':[1990,1999], '2000s':[2000,2009], '2010s':[2010,2019], '2020s':[2020,2030] };
   const r = ranges[era];
   if (!r) { playRandomSong(); return; }
@@ -179,7 +360,6 @@ function playByEra(era) {
 
 function playSong(song) {
   if (isLoadingNext && currentSong?.id !== song.id) {
-    // Already loading a different song — abort current load first
     audio.pause();
     audio.removeAttribute('src');
     audio.load();
@@ -191,38 +371,52 @@ function playSong(song) {
   syncedLyrics = [];
   clearInterval(lyricsTimer);
 
-  document.getElementById('song-title').textContent = decodeHtml(song.name);
-  document.getElementById('song-artist').textContent = decodeHtml(song.artists || 'Unknown Artist');
+  const songName = decodeHtml(song.name);
+  const artistName = decodeHtml(song.artists || 'Unknown Artist');
+  
+  document.getElementById('song-title').textContent = songName;
+  document.getElementById('song-artist').textContent = artistName;
   document.getElementById('song-album').textContent = song.album ? `${decodeHtml(song.album)} • ${song.year || ''}` : (song.year || '');
 
   const artEl = document.getElementById('album-art');
   if (song.image) {
-    artEl.innerHTML = `<img class="album-art" src="${song.image}" alt="" onerror="this.parentElement.innerHTML='<div class=\\'album-art-placeholder\\'>🎵</div>'" />`;
-    document.getElementById('player-bg').style.backgroundImage = `url(${song.image})`;
+    artEl.innerHTML = `<img class="album-art" src="${escAttr(song.image)}" alt="" onerror="this.parentElement.innerHTML='<div class=\\'album-art-placeholder\\'>🎵</div>'" />`;
+    document.getElementById('player-bg').style.backgroundImage = `url(${escAttr(song.image)})`;
   } else {
     artEl.innerHTML = '<div class="album-art-placeholder">🎵</div>';
+    document.getElementById('player-bg').style.backgroundImage = '';
   }
 
-  document.getElementById('npb-title').textContent = decodeHtml(song.name);
-  document.getElementById('npb-artist').textContent = decodeHtml(song.artists || '');
+  document.getElementById('npb-title').textContent = songName;
+  document.getElementById('npb-artist').textContent = artistName;
   const npbArt = document.getElementById('npb-art');
   npbArt.src = song.image || ''; npbArt.style.display = song.image ? 'block' : 'none';
-  // Only show NPB if not on player page
+  
   const onPlayer = document.getElementById('page-player')?.classList.contains('active');
   const npbEl = document.querySelector('.now-playing-bar');
   if (onPlayer) npbEl.classList.add('hidden');
   else npbEl.classList.remove('hidden');
 
-  updateHeartBtn(); updateNpbHeart();
+  updateHeartBtn(); updateNpbHeart(); updatePlayerDownloadBtn();
+
+  // Update MediaSession API for lock screen controls
+  if ('mediaSession' in navigator) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: songName, artist: artistName,
+      album: song.album ? decodeHtml(song.album) : '',
+      artwork: song.image ? [{ src: song.image, sizes: '500x500', type: 'image/jpeg' }] : []
+    });
+  }
 
   audio.src = song.audio;
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
-    consecutiveErrors = 0; // Reset on successful play
+    consecutiveErrors = 0;
     updatePlayBtn();
     document.querySelector('.album-art-container')?.classList.add('playing');
     saveRecent(song);
     fetchLyrics(song);
+    if (window.aiEngine) window.aiEngine.trackPlay(song);
   }).catch(e => {
     console.error('Play failed:', e);
     isLoadingNext = false; showLoading(false);
@@ -235,24 +429,30 @@ function playSong(song) {
     setTimeout(() => {
       if (activeLanguage === 'hindi') playRandomBollywood();
       else playRandomSong();
-    }, 300);
+    }, 500);
   });
 }
 
 function togglePlay() {
   if (!currentSong) { playRandomSong(); return; }
-  if (!audio.src || !audio.src.startsWith('http')) {
-    // Restored song — need to actually load and play it
+  if (!audio.src || audio.src === location.href) {
     playSong(currentSong); return;
   }
   if (isPlaying) { audio.pause(); isPlaying = false; }
-  else { audio.play(); isPlaying = true; }
+  else { audio.play().catch(() => {}); isPlaying = true; }
   updatePlayBtn();
   document.querySelector('.album-art-container')?.classList.toggle('playing', isPlaying);
 }
 
 function playNext() {
-  if (isLoadingNext) return; // Prevent rapid fire
+  if (isLoadingNext) return;
+  // Bollywood category pool override
+  if (bollywoodCategoryPool && activeLanguage === 'hindi') {
+    const idx = bollywoodCategoryPool.findIndex(s => s.id === currentSong?.id);
+    const next = (idx >= 0 && idx < bollywoodCategoryPool.length - 1) ? bollywoodCategoryPool[idx + 1] : bollywoodCategoryPool[0];
+    history.push(next); historyIndex = history.length - 1;
+    playSong(next); return;
+  }
   if (!shuffleOn && currentSong) {
     const db = getActiveDB();
     const idx = db.findIndex(s => s.id === currentSong.id);
@@ -282,6 +482,7 @@ function updatePlayBtn() {
 function toggleShuffle() {
   shuffleOn = !shuffleOn;
   document.getElementById('shuffle-btn').classList.toggle('active', shuffleOn);
+  showToast(shuffleOn ? 'Shuffle on' : 'Shuffle off');
 }
 
 // ═══ LYRICS (LRCLIB time-synced) ═══
@@ -307,6 +508,7 @@ async function fetchLyrics(song) {
   const artist = decodeHtml(song.artists||'').split(',')[0].trim();
   try {
     const resp = await fetch(`${LRCLIB_API}?q=${encodeURIComponent(`${name} ${artist}`.substring(0,80))}`);
+    if (!resp.ok) throw new Error('Network error');
     const results = await resp.json();
     if (results?.length) {
       const synced = results.find(r => r.syncedLyrics);
@@ -316,7 +518,7 @@ async function fetchLyrics(song) {
         el.innerHTML = syncedLyrics.map((l,i) => `<div class="lyric-line" data-idx="${i}">${escHtml(l.text)}</div>`).join('');
         startLyricsSync(); return;
       }
-      if (plain?.plainLyrics) { el.innerHTML = plain.plainLyrics.replace(/\n/g,'<br>'); return; }
+      if (plain?.plainLyrics) { el.innerHTML = escHtml(plain.plainLyrics).replace(/\n/g,'<br>'); return; }
     }
     el.innerHTML = '<div class="lyrics-placeholder">♪ No lyrics found</div>';
   } catch(e) { el.innerHTML = '<div class="lyrics-placeholder">♪ Could not load lyrics</div>'; }
@@ -328,16 +530,17 @@ function startLyricsSync() {
     if (!syncedLyrics.length || !audio.currentTime) return;
     let activeIdx = -1;
     for (let i = syncedLyrics.length-1; i >= 0; i--) { if (syncedLyrics[i].time <= audio.currentTime) { activeIdx = i; break; } }
-    document.querySelectorAll('.lyric-line').forEach((line,i) => {
+    const lines = document.querySelectorAll('.lyric-line');
+    lines.forEach((line,i) => {
       line.classList.toggle('lyric-active', i === activeIdx);
       line.classList.toggle('lyric-past', i < activeIdx);
     });
-    if (activeIdx >= 0) document.querySelectorAll('.lyric-line')[activeIdx]?.scrollIntoView({behavior:'smooth',block:'center'});
+    if (activeIdx >= 0 && lines[activeIdx]) lines[activeIdx].scrollIntoView({behavior:'smooth',block:'center'});
   }, 200);
 }
 
 // ═══ AUDIO EVENTS ═══
-audio.addEventListener('ended', playNext);
+audio.addEventListener('ended', () => playNext());
 audio.addEventListener('error', () => {
   isLoadingNext = false;
   consecutiveErrors++;
@@ -353,18 +556,36 @@ audio.addEventListener('error', () => {
   }, 1000);
 });
 audio.addEventListener('timeupdate', () => {
-  if (!audio.duration) return;
+  if (!audio.duration || isNaN(audio.duration)) return;
   const pct = (audio.currentTime/audio.duration)*100;
   document.getElementById('progress-fill').style.width = pct+'%';
   document.getElementById('progress-knob').style.left = pct+'%';
   document.getElementById('time-current').textContent = fmtTime(audio.currentTime);
   document.getElementById('time-total').textContent = fmtTime(audio.duration);
 });
-function fmtTime(s) { const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+(sec<10?'0':'')+sec; }
+audio.addEventListener('pause', () => {
+  isPlaying = false; updatePlayBtn();
+  document.querySelector('.album-art-container')?.classList.remove('playing');
+});
+audio.addEventListener('play', () => {
+  isPlaying = true; updatePlayBtn();
+  document.querySelector('.album-art-container')?.classList.add('playing');
+});
+
+function fmtTime(s) { if (isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+(sec<10?'0':'')+sec; }
+
 function seekTo(e) {
-  if (!audio.duration) return;
+  if (!audio.duration || isNaN(audio.duration)) return;
   const rect = e.currentTarget.getBoundingClientRect();
   audio.currentTime = Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)) * audio.duration;
+}
+
+// MediaSession API for lock screen controls
+if ('mediaSession' in navigator) {
+  navigator.mediaSession.setActionHandler('play', () => togglePlay());
+  navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+  navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
+  navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
 }
 
 // ═══ HEART / LIKE ═══
@@ -372,8 +593,7 @@ function toggleLike() {
   if (!currentSong) return;
   if (window.aiEngine.isLiked(currentSong.id)) window.aiEngine.unlikeSong(currentSong.id);
   else window.aiEngine.likeSong(currentSong);
-  updateHeartBtn(); updateNpbHeart(); cloudSave();
-  // Always rebuild profile on like/unlike so it's ready when user visits
+  updateHeartBtn(); updateNpbHeart();
   window.aiEngine.rebuildProfile(); window.aiEngine.save();
   if (document.getElementById('page-profile')?.classList.contains('active')) renderProfile();
 }
@@ -399,12 +619,10 @@ function saveRecent(song) {
   try {
     let recent = JSON.parse(localStorage.getItem('raagam_recent')||'[]');
     recent = recent.filter(s => s.id !== song.id);
-    recent.unshift({id:song.id,name:song.name,artists:song.artists,image:song.image,audio:song.audio,year:song.year,album:song.album});
+    recent.unshift({id:song.id,name:song.name,artists:song.artists,image:song.image,audio:song.audio,year:song.year,album:song.album,language:song.language});
     recent = recent.slice(0,30);
     localStorage.setItem('raagam_recent', JSON.stringify(recent));
   } catch(e) {}
-  clearTimeout(window._syncTimer);
-  window._syncTimer = setTimeout(cloudSave, 5000);
 }
 function renderRecent() {
   try {
@@ -414,10 +632,10 @@ function renderRecent() {
     if (!recent.length) { section.style.display='none'; return; }
     section.style.display='block';
     grid.innerHTML = recent.slice(0,10).map(s => `
-      <div class="recent-card" onclick="playFromRecent('${s.id}')">
-        <img src="${s.image||''}" alt="" onerror="this.style.display='none'" />
-        <div class="recent-title">${escHtml(s.name)}</div>
-        <div class="recent-artist">${escHtml(s.artists||'')}</div>
+      <div class="recent-card" onclick="playFromRecent('${escAttr(s.id)}')">
+        <img src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+        <div class="recent-title">${escHtml(decodeHtml(s.name))}</div>
+        <div class="recent-artist">${escHtml(decodeHtml(s.artists||''))}</div>
       </div>`).join('');
   } catch(e) {}
 }
@@ -439,22 +657,72 @@ function showPage(name) {
   if (name==='library') renderLibrary();
   if (name==='profile') renderProfile();
   if (name==='home') { renderRecent(); updateHomeStats(); }
-  if (name==='search') { document.getElementById('search-input')?.focus(); }
+  if (name==='search') { setTimeout(() => document.getElementById('search-input')?.focus(), 50); }
   if (name==='bollywood') renderBollywoodList();
+  if (name==='player') updatePlayerDownloadBtn();
 }
 
-// ═══ LIBRARY ═══
+// ═══ LIBRARY (Liked + Offline) ═══
 function renderLibrary() {
-  const songs = window.aiEngine.getLikedSongs();
+  const songs = window.aiEngine ? window.aiEngine.getLikedSongs() : [];
   const container = document.getElementById('library-list');
-  document.getElementById('library-count').textContent = songs.length ? `${songs.length} songs` : '';
-  if (!songs.length) { container.innerHTML='<div class="empty-state"><div class="icon">♡</div><p>Songs you heart will appear here</p></div>'; return; }
-  container.innerHTML = songs.slice().reverse().map(s => `
-    <div class="library-item" onclick="playSongFromLib('${s.id}')">
-      <img class="library-thumb" src="${s.image||''}" alt="" onerror="this.style.display='none'" />
-      <div class="library-info"><h4>${escHtml(s.name)}</h4><p>${escHtml(s.artists||s.album||'')}</p></div>
-    </div>`).join('');
+  const dlSongs = Object.values(downloadedSongs);
+  
+  let html = '';
+  
+  // Offline Songs section
+  if (dlSongs.length > 0) {
+    html += '<div class="library-section-header"><h3>📥 Downloaded Songs</h3><span class="library-section-count">' + dlSongs.length + '</span></div>';
+    html += dlSongs.map(s => `
+      <div class="library-item">
+        <img class="library-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" onclick="playDownloaded('${escAttr(s.id)}')" />
+        <div class="library-info" onclick="playDownloaded('${escAttr(s.id)}')">
+          <h4>${escHtml(decodeHtml(s.name))}</h4>
+          <p>${escHtml(decodeHtml(s.artists||s.album||''))} <span class="dl-badge">Downloaded</span></p>
+        </div>
+        <button class="lib-remove-btn" onclick="removeDownload('${escAttr(s.id)}')" title="Remove download">✕</button>
+      </div>`).join('');
+  }
+  
+  // Liked Songs section
+  const likedLabel = dlSongs.length > 0 ? '<div class="library-section-header"><h3>❤️ Liked Songs</h3><span class="library-section-count">' + songs.length + '</span></div>' : '';
+  document.getElementById('library-count').textContent = songs.length ? `${songs.length} liked` : '';
+  
+  if (songs.length > 0) {
+    html += likedLabel;
+    html += songs.slice().reverse().map(s => {
+      const isDl = isSongDownloaded(s);
+      return `<div class="library-item" onclick="playSongFromLib('${escAttr(s.id)}')">
+        <img class="library-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+        <div class="library-info">
+          <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
+          <p>${escHtml(decodeHtml(s.artists||s.album||''))}</p>
+        </div>
+        <button class="lib-dl-btn" data-download-id="${escAttr(s.id)}" onclick="event.stopPropagation(); ${isDl ? `removeDownload('${escAttr(s.id)}')` : `downloadSongById('${escAttr(s.id)}')`}" title="${isDl ? 'Remove download' : 'Download for offline'}">${isDl ? '✓' : '↓'}</button>
+      </div>`;
+    }).join('');
+  }
+  
+  if (!html) {
+    container.innerHTML = '<div class="empty-state"><div class="icon">♡</div><p>Songs you heart will appear here</p><p style="font-size:12px;margin-top:8px">Downloaded songs for offline listening will also show here</p></div>';
+    return;
+  }
+  container.innerHTML = html;
 }
+
+function downloadSongById(id) {
+  // Find song in liked songs or DBs
+  let song = window.aiEngine?.getLikedSongs().find(s => s.id === id);
+  if (!song && typeof SongsDB !== 'undefined') song = SongsDB.SONGS_DB.find(s => s.id === id);
+  if (!song && typeof BollywoodSongsDB !== 'undefined') song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
+  if (song) downloadSong(song);
+}
+
+function playDownloaded(id) {
+  const song = downloadedSongs[id];
+  if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); showPage('player'); }
+}
+
 function playSongFromLib(id) {
   const song = window.aiEngine.getLikedSongs().find(s=>s.id===id);
   if (song) { history.push(song); historyIndex=history.length-1; playSong(song); showPage('player'); }
@@ -462,7 +730,7 @@ function playSongFromLib(id) {
 
 // ═══ PROFILE ═══
 function renderProfile() {
-  // Always rebuild before rendering
+  if (!window.aiEngine) return;
   window.aiEngine.rebuildProfile();
   
   const p = window.aiEngine.getPreferences();
@@ -471,15 +739,12 @@ function renderProfile() {
   const topGenre = p.topGenre || 'unknown';
   const genreColor = colors[topGenre] || colors.unknown;
 
-  // Hero gradient based on top genre
-  const hero = document.getElementById('profile-hero');
   const glow = document.getElementById('profile-hero-glow');
   if (genreColor) {
     glow.style.background = `radial-gradient(circle, ${genreColor.color}66 0%, transparent 70%)`;
     document.querySelector('.profile-avatar-ring').style.background = genreColor.gradient;
   }
 
-  // Personality
   const personalityEl = document.getElementById('profile-personality');
   if (p.personality && liked.length > 0) {
     personalityEl.textContent = `${p.personalityEmoji} ${p.personality}`;
@@ -488,7 +753,6 @@ function renderProfile() {
     personalityEl.style.display = 'none';
   }
 
-  // Stats
   const stats = p.stats || {};
   document.getElementById('profile-stats').innerHTML = `
     <div class="stat-card"><div class="stat-num">${stats.totalLiked || 0}</div><div class="stat-label">Liked Songs</div></div>
@@ -496,7 +760,6 @@ function renderProfile() {
     <div class="stat-card"><div class="stat-num">${stats.uniqueArtists || 0}</div><div class="stat-label">Artists</div></div>
     <div class="stat-card"><div class="stat-num">${stats.decadesSpanned || 0}</div><div class="stat-label">Decades</div></div>`;
 
-  // Music DNA bar
   const dnaBar = document.getElementById('profile-dna-bar');
   const dnaLegend = document.getElementById('profile-dna-legend');
   const genreDist = p.genreDistribution || {};
@@ -505,21 +768,19 @@ function renderProfile() {
   if (genreEntries.length > 0) {
     dnaBar.innerHTML = genreEntries.map(([genre, pct]) => {
       const c = colors[genre] || colors.unknown;
-      return `<div class="dna-segment" style="width:${Math.max(pct, 3)}%;background:${c.gradient};animation:dnaGrow 1s ease forwards"></div>`;
+      return `<div class="dna-segment" style="width:${Math.max(pct, 3)}%;background:${c.gradient}"></div>`;
     }).join('');
     dnaLegend.innerHTML = genreEntries.map(([genre, pct]) => {
       const c = colors[genre] || colors.unknown;
-      return `<div class="dna-legend-item"><div class="dna-legend-dot" style="background:${c.color}"></div>${genre} ${pct}%</div>`;
+      return `<div class="dna-legend-item"><div class="dna-legend-dot" style="background:${c.color}"></div>${escHtml(genre)} ${pct}%</div>`;
     }).join('');
   } else {
     dnaBar.innerHTML = '<div style="color:var(--text-muted);font-size:13px;padding:4px 0">Like songs to see your DNA!</div>';
     dnaLegend.innerHTML = '';
   }
 
-  // Rank badges
   const badges = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
 
-  // Top Singers
   const singersEl = document.getElementById('profile-singers');
   const singersCard = document.getElementById('profile-singers-card');
   if (p.topSingers && p.topSingers.length > 0) {
@@ -531,7 +792,6 @@ function renderProfile() {
     singersCard.style.display = 'none';
   }
 
-  // Top Music Directors
   const mdEl = document.getElementById('profile-music-directors');
   const mdCard = document.getElementById('profile-md-card');
   if (p.topMusicDirectors && p.topMusicDirectors.length > 0) {
@@ -543,7 +803,6 @@ function renderProfile() {
     mdCard.style.display = 'none';
   }
 
-  // Favorite genre badge
   const genreBadge = document.getElementById('profile-genre-badge');
   const genreCard = document.getElementById('profile-genre-card');
   if (p.topGenres && p.topGenres.length > 0) {
@@ -555,13 +814,12 @@ function renderProfile() {
       <div class="genre-badge" style="background:${gc.gradient}">
         <div class="genre-badge-icon">${genreIcons[g.name] || '🎶'}</div>
         <div class="genre-badge-label">Favorite Genre</div>
-        <div class="genre-badge-name">${g.name}</div>
+        <div class="genre-badge-name">${escHtml(g.name)}</div>
       </div>`;
   } else {
     genreCard.style.display = 'none';
   }
 
-  // Decades timeline
   const decadesEl = document.getElementById('profile-decades');
   const decadeData = p.topDecades || [];
   if (decadeData.length > 0) {
@@ -582,34 +840,36 @@ function renderProfile() {
     decadesEl.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No data yet</div>';
   }
 
-  // Recent likes
   const recentCard = document.getElementById('profile-recent-card');
   const recentLikes = document.getElementById('profile-recent-likes');
   if (liked.length > 0) {
     recentCard.style.display = '';
     const last5 = liked.slice(-5).reverse();
     recentLikes.innerHTML = last5.map(s =>
-      `<div class="recent-like-card" onclick="playSongFromLib('${s.id}')">
-        <img class="recent-like-art" src="${s.image || ''}" alt="" onerror="this.style.display='none'" />
-        <div class="recent-like-name">${escHtml(s.name)}</div>
+      `<div class="recent-like-card" onclick="playSongFromLib('${escAttr(s.id)}')">
+        <img class="recent-like-art" src="${escAttr(s.image || '')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+        <div class="recent-like-name">${escHtml(decodeHtml(s.name))}</div>
       </div>`
     ).join('');
   } else {
     recentCard.style.display = 'none';
   }
 
-  // Insights
   document.getElementById('profile-insights').innerHTML = p.insights && p.insights.length
     ? p.insights.map(i => `<div class="insight-item"><span>✨</span>${escHtml(i)}</div>`).join('')
     : '<div class="insight-item" style="color:var(--text-muted)">Like 3+ songs to unlock AI insights</div>';
+  
+  // Cache size
+  updateCacheSize();
 }
 
 function updateHomeStats() {
   const el = document.getElementById('stat-songs');
-  if (el && window.SongsDB && SongsDB.SONGS_DB) {
-    el.textContent = SongsDB.SONGS_DB.length.toLocaleString();
+  if (el && typeof SongsDB !== 'undefined' && SongsDB.SONGS_DB) {
+    let total = SongsDB.SONGS_DB.length;
+    if (typeof BollywoodSongsDB !== 'undefined' && BollywoodSongsDB.SONGS_DB) total += BollywoodSongsDB.SONGS_DB.length;
+    el.textContent = total.toLocaleString();
   } else if (el) {
-    // DB not loaded yet, retry
     setTimeout(updateHomeStats, 1000);
   }
 }
@@ -628,14 +888,19 @@ function showToast(msg) {
     document.body.appendChild(el);
   }
   el.textContent = msg;
+  el.classList.remove('show');
+  // Force reflow for animation restart
+  void el.offsetWidth;
   el.classList.add('show');
-  setTimeout(() => el.classList.remove('show'), 3000);
+  clearTimeout(el._timer);
+  el._timer = setTimeout(() => el.classList.remove('show'), 3000);
 }
 
 // ═══ HELPERS ═══
 function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
 function decodeHtml(s) { const d=document.createElement('textarea'); d.innerHTML=s||''; return d.value; }
+function escAttr(s) { return (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 // ═══ RESTORE LAST PLAYED ═══
 function restoreLastPlayed() {
@@ -643,14 +908,13 @@ function restoreLastPlayed() {
     const recent = JSON.parse(localStorage.getItem('raagam_recent') || '[]');
     if (recent.length > 0 && !currentSong) {
       const song = recent[0];
-      // Update NPB without playing
       document.getElementById('npb-title').textContent = decodeHtml(song.name);
       document.getElementById('npb-artist').textContent = decodeHtml(song.artists || '');
       const npbArt = document.getElementById('npb-art');
       npbArt.src = song.image || ''; npbArt.style.display = song.image ? 'block' : 'none';
       document.querySelector('.now-playing-bar').classList.remove('hidden');
-      // Store ref so tapping NPB can resume
       currentSong = song;
+      updateHeartBtn(); updateNpbHeart();
     }
   } catch(e) {}
 }
@@ -677,8 +941,7 @@ function initSwipe() {
     if (!swiping) return;
     const dx = e.touches[0].clientX - touchStartX;
     const dy = Math.abs(e.touches[0].clientY - touchStartY);
-    // Only horizontal swipe
-    if (dy > Math.abs(dx)) { swiping = false; artContainer.style.transform = ''; return; }
+    if (dy > Math.abs(dx)) { swiping = false; artContainer.style.transform = ''; artContainer.style.opacity = '1'; return; }
     const clamped = Math.max(-120, Math.min(120, dx));
     const opacity = 1 - Math.abs(clamped) / 200;
     artContainer.style.transform = `translateX(${clamped}px) rotate(${clamped * 0.05}deg)`;
@@ -690,18 +953,16 @@ function initSwipe() {
     swiping = false;
     const dx = e.changedTouches[0].clientX - touchStartX;
     const elapsed = Date.now() - touchStartTime;
-    const velocity = Math.abs(dx) / elapsed;
+    const velocity = Math.abs(dx) / Math.max(elapsed, 1);
 
     artContainer.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
 
     if (Math.abs(dx) > 80 || velocity > 0.5) {
-      // Swipe detected — animate out
       const dir = dx > 0 ? 1 : -1;
       artContainer.style.transform = `translateX(${dir * 300}px) rotate(${dir * 15}deg)`;
       artContainer.style.opacity = '0';
       setTimeout(() => {
         if (dir > 0) playPrev(); else playNext();
-        // Reset with slide-in from opposite side
         artContainer.style.transition = 'none';
         artContainer.style.transform = `translateX(${-dir * 200}px)`;
         artContainer.style.opacity = '0';
@@ -712,7 +973,6 @@ function initSwipe() {
         });
       }, 200);
     } else {
-      // Snap back
       artContainer.style.transform = '';
       artContainer.style.opacity = '1';
     }
@@ -721,20 +981,27 @@ function initSwipe() {
 
 // ═══ SEARCH ═══
 function getAllSongs() {
-  const telugu = SongsDB.SONGS_DB || [];
-  const bollywood = (typeof BollywoodSongsDB !== 'undefined' ? BollywoodSongsDB.SONGS_DB : []);
+  const telugu = (typeof SongsDB !== 'undefined' ? SongsDB.SONGS_DB : []) || [];
+  const bollywood = (typeof BollywoodSongsDB !== 'undefined' ? BollywoodSongsDB.SONGS_DB : []) || [];
   return [...telugu, ...bollywood];
 }
 
 function performSearch(query) {
   if (!query || query.length < 2) return [];
-  const q = query.toLowerCase();
+  // Decode HTML entities in query for matching
+  const q = decodeHtml(query).toLowerCase();
   const all = getAllSongs();
-  return all.filter(s =>
-    s.name.toLowerCase().includes(q) ||
-    (s.artists || '').toLowerCase().includes(q) ||
-    (s.album || '').toLowerCase().includes(q)
-  ).slice(0, 50);
+  const results = [];
+  for (let i = 0; i < all.length && results.length < 50; i++) {
+    const s = all[i];
+    const name = decodeHtml(s.name || '').toLowerCase();
+    const artists = decodeHtml(s.artists || '').toLowerCase();
+    const album = decodeHtml(s.album || '').toLowerCase();
+    if (name.includes(q) || artists.includes(q) || album.includes(q)) {
+      results.push(s);
+    }
+  }
+  return results;
 }
 
 function renderSearchResults(results, query) {
@@ -747,14 +1014,17 @@ function renderSearchResults(results, query) {
     container.innerHTML = `<div class="search-empty-state"><div class="search-empty-icon">😔</div><p>No results for "${escHtml(query)}"</p><p class="search-hint">Try a different spelling or keyword</p></div>`;
     return;
   }
-  container.innerHTML = results.map(s => `
-    <div class="search-result-item" onclick="playSongFromSearch('${s.id}','${s.language||'telugu'}')">
-      <img class="search-thumb" src="${s.image||''}" alt="" onerror="this.style.display='none'" loading="lazy" />
+  container.innerHTML = results.map(s => {
+    const isDl = isSongDownloaded(s);
+    return `<div class="search-result-item" onclick="playSongFromSearch('${escAttr(s.id)}','${escAttr(s.language||'telugu')}')">
+      <img class="search-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
       <div class="search-info">
-        <h4>${escHtml(s.name)}</h4>
-        <p>${escHtml(s.artists||'')} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}</p>
+        <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
+        <p>${escHtml(decodeHtml(s.artists||''))} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}</p>
       </div>
-    </div>`).join('');
+      <button class="search-dl-btn" data-download-id="${escAttr(s.id)}" onclick="event.stopPropagation(); ${isDl ? `removeDownload('${escAttr(s.id)}')` : `downloadSongById('${escAttr(s.id)}')`}" title="${isDl ? 'Remove' : 'Download'}">${isDl ? '✓' : '↓'}</button>
+    </div>`;
+  }).join('');
 }
 
 function playSongFromSearch(id, lang) {
@@ -762,7 +1032,7 @@ function playSongFromSearch(id, lang) {
   if (lang === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
     song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
   }
-  if (!song) song = SongsDB.SONGS_DB.find(s => s.id === id);
+  if (!song && typeof SongsDB !== 'undefined') song = SongsDB.SONGS_DB.find(s => s.id === id);
   if (!song && typeof BollywoodSongsDB !== 'undefined') song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
   if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); showPage('player'); }
 }
@@ -786,13 +1056,15 @@ function initSearch() {
     clearBtn.style.display = q ? 'block' : 'none';
     debounce = setTimeout(() => {
       renderSearchResults(performSearch(q), q);
-    }, 200);
+    }, 300); // 300ms debounce for 16k+ songs
   });
 }
 
 // ═══ BOLLYWOOD ═══
+let bollywoodCategoryPool = null;
+
 function playRandomBollywood() {
-  if (typeof BollywoodSongsDB === 'undefined') return;
+  if (typeof BollywoodSongsDB === 'undefined' || !BollywoodSongsDB.SONGS_DB?.length) return;
   const song = BollywoodSongsDB.getRandomSong(currentSong?.id);
   if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); }
 }
@@ -808,8 +1080,6 @@ function playBollywoodByEra(era) {
   history.push(song); historyIndex = history.length - 1;
   playSong(song); showPage('player');
 }
-
-let bollywoodCategoryPool = null; // Current category filtered pool
 
 const BOLLYWOOD_CATEGORIES = [
   { key: '2020s', emoji: '🔥', name: '2020s Hits', desc: 'Latest Bollywood bangers', gradient: 'linear-gradient(135deg, #ff6b35, #f7c948)', filter: s => parseInt(s.year) >= 2020 },
@@ -829,7 +1099,6 @@ function playBollywoodCategory(categoryKey) {
   if (!cat) { playRandomBollywood(); return; }
   const pool = BollywoodSongsDB.SONGS_DB.filter(cat.filter);
   if (!pool.length) { showToast('No songs in this category'); return; }
-  // Shuffle the pool
   bollywoodCategoryPool = pool.slice().sort(() => Math.random() - 0.5);
   activeLanguage = 'hindi';
   const song = bollywoodCategoryPool[0];
@@ -837,31 +1106,13 @@ function playBollywoodCategory(categoryKey) {
   playSong(song); showPage('player');
 }
 
-// Override playNext/playPrev to respect category pool
-const _originalPlayNext = playNext;
-playNext = function() {
-  if (bollywoodCategoryPool && activeLanguage === 'hindi') {
-    const idx = bollywoodCategoryPool.findIndex(s => s.id === currentSong?.id);
-    const next = (idx >= 0 && idx < bollywoodCategoryPool.length - 1) ? bollywoodCategoryPool[idx + 1] : bollywoodCategoryPool[0];
-    history.push(next); historyIndex = history.length - 1;
-    playSong(next); return;
-  }
-  _originalPlayNext();
-};
-
-// Clear category pool when switching to Telugu or playing random
-const _originalPlayRandomSong = playRandomSong;
-playRandomSong = function() {
-  bollywoodCategoryPool = null;
-  _originalPlayRandomSong();
-};
-
 function renderBollywoodList() {
   if (typeof BollywoodSongsDB === 'undefined') return;
   const container = document.getElementById('bollywood-categories');
   if (!container) return;
   container.innerHTML = BOLLYWOOD_CATEGORIES.map(cat => {
     const count = BollywoodSongsDB.SONGS_DB.filter(cat.filter).length;
+    if (count === 0) return '';
     return `<div class="bw-category-card" style="background:${cat.gradient}" onclick="playBollywoodCategory('${cat.key}')">
       <div class="bw-cat-emoji">${cat.emoji}</div>
       <div class="bw-cat-info">
@@ -882,29 +1133,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (s?.username && s?.token) {
       currentUser = s;
       enterApp();
-      cloudLoad();
       return;
     }
   } catch(e) {}
   
-  // Show landing
   showLanding();
 });
 
-// Bind events after DOM ready
 document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('.nav-btn[data-page]').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
   document.getElementById('play-btn')?.addEventListener('click', togglePlay);
-  document.getElementById('next-btn')?.addEventListener('click', playNext);
-  document.getElementById('prev-btn')?.addEventListener('click', playPrev);
+  document.getElementById('next-btn')?.addEventListener('click', () => playNext());
+  document.getElementById('prev-btn')?.addEventListener('click', () => playPrev());
   document.getElementById('heart-btn')?.addEventListener('click', toggleLike);
   document.getElementById('npb-heart')?.addEventListener('click', toggleLike);
   document.getElementById('npb-play')?.addEventListener('click', togglePlay);
-  document.getElementById('npb-next')?.addEventListener('click', playNext);
+  document.getElementById('npb-next')?.addEventListener('click', () => playNext());
   document.getElementById('progress-bar')?.addEventListener('click', seekTo);
   document.getElementById('shuffle-btn')?.classList.add('active');
   
-  // Enter key on auth inputs
   ['auth-username','auth-password','auth-display'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') submitAuth(); });
   });
@@ -912,3 +1159,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initSwipe();
   initSearch();
 });
+
+// Clean up lyrics timer on page unload
+window.addEventListener('beforeunload', () => { clearInterval(lyricsTimer); });
