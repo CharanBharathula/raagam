@@ -9,6 +9,7 @@ let isLoadingNext = false;
 let syncedLyrics = [];
 let lyricsTimer = null;
 let shuffleOn = true;
+let activeLanguage = 'telugu'; // Track current playback language mode
 let currentUser = null;
 let authMode = 'login';
 
@@ -143,6 +144,9 @@ function enterApp() {
 // ═══ PLAYBACK ═══
 function playRandomSong() {
   if (isLoadingNext) return;
+  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
+    playRandomBollywood(); return;
+  }
   const prefs = window.aiEngine ? window.aiEngine.getPreferences() : null;
   const hasPrefs = window.aiEngine && window.aiEngine.getLikedSongs().length >= 5;
   const excludeId = currentSong ? currentSong.id : null;
@@ -154,6 +158,11 @@ function playRandomSong() {
   history.push(song);
   historyIndex = history.length - 1;
   playSong(song);
+}
+
+function getActiveDB() {
+  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') return BollywoodSongsDB.SONGS_DB;
+  return SongsDB.SONGS_DB;
 }
 
 function playByEra(era) {
@@ -170,6 +179,7 @@ function playByEra(era) {
 function playSong(song) {
   isLoadingNext = true;
   currentSong = song;
+  activeLanguage = (song.language === 'hindi') ? 'hindi' : 'telugu';
   showLoading(true);
   syncedLyrics = [];
   clearInterval(lyricsTimer);
@@ -226,9 +236,10 @@ function togglePlay() {
 
 function playNext() {
   if (!shuffleOn && currentSong) {
-    const idx = SongsDB.SONGS_DB.findIndex(s => s.id === currentSong.id);
-    if (idx >= 0 && idx < SongsDB.SONGS_DB.length - 1) {
-      const song = SongsDB.SONGS_DB[idx + 1];
+    const db = getActiveDB();
+    const idx = db.findIndex(s => s.id === currentSong.id);
+    if (idx >= 0 && idx < db.length - 1) {
+      const song = db[idx + 1];
       history.push(song); historyIndex = history.length - 1;
       playSong(song); return;
     }
