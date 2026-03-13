@@ -59,41 +59,41 @@ async function submitAuth() {
     return;
   }
 
-  const endpoint = authMode === 'signup' ? '/api/signup' : '/api/login';
-  const body = { username, password };
-  if (authMode === 'signup' && display) body.displayName = display;
-
+  // Static mode: localStorage-only auth (no server needed)
   try {
     document.getElementById('auth-submit').textContent = 'Loading...';
-    const resp = await fetch(endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    const data = await resp.json();
-
-    if (!data.ok) {
-      errEl.textContent = data.error || 'Something went wrong';
-      errEl.classList.remove('hidden');
-      document.getElementById('auth-submit').textContent = authMode === 'signup' ? 'Create Account' : 'Sign In';
-      return;
-    }
-
     const token = await hashToken(username, password);
-    currentUser = { username: data.username, displayName: data.displayName || data.username, token };
-    localStorage.setItem('raagam_session', JSON.stringify(currentUser));
+    const storedUsers = JSON.parse(localStorage.getItem('raagam_users') || '{}');
 
-    if (authMode === 'login' && data.likedSongs) {
-      window.aiEngine.likedSongs = data.likedSongs;
-      window.aiEngine.rebuildProfile();
-      window.aiEngine.save();
-      if (data.recentSongs) localStorage.setItem('raagam_recent', JSON.stringify(data.recentSongs));
+    if (authMode === 'signup') {
+      if (storedUsers[username]) {
+        errEl.textContent = 'Username already taken';
+        errEl.classList.remove('hidden');
+        document.getElementById('auth-submit').textContent = 'Create Account';
+        return;
+      }
+      storedUsers[username] = { token, displayName: display || username };
+      localStorage.setItem('raagam_users', JSON.stringify(storedUsers));
+    } else {
+      // Login: check if user exists. If not, auto-create for convenience
+      if (storedUsers[username] && storedUsers[username].token !== token) {
+        errEl.textContent = 'Wrong password';
+        errEl.classList.remove('hidden');
+        document.getElementById('auth-submit').textContent = 'Sign In';
+        return;
+      }
+      if (!storedUsers[username]) {
+        storedUsers[username] = { token, displayName: username };
+        localStorage.setItem('raagam_users', JSON.stringify(storedUsers));
+      }
     }
 
+    currentUser = { username, displayName: storedUsers[username].displayName || username, token };
+    localStorage.setItem('raagam_session', JSON.stringify(currentUser));
     enterApp();
   } catch(e) {
     console.error('Auth error:', e);
-    errEl.textContent = 'Connection error — ' + (e.message || 'try again');
+    errEl.textContent = 'Error — ' + (e.message || 'try again');
     errEl.classList.remove('hidden');
     document.getElementById('auth-submit').textContent = authMode === 'signup' ? 'Create Account' : 'Sign In';
   }
@@ -563,33 +563,9 @@ function updateHomeStats() {
   }
 }
 
-// ═══ CLOUD SYNC ═══
-async function cloudSave() {
-  if (!currentUser) return;
-  try {
-    await fetch('/api/sync', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        username: currentUser.username, token: currentUser.token,
-        likedSongs: window.aiEngine.getLikedSongs(),
-        recentSongs: JSON.parse(localStorage.getItem('raagam_recent')||'[]'),
-        profile: window.aiEngine.getPreferences()
-      })
-    });
-  } catch(e) {}
-}
-async function cloudLoad() {
-  if (!currentUser) return;
-  try {
-    const resp = await fetch(`/api/sync?username=${currentUser.username}&token=${currentUser.token}`);
-    const data = await resp.json();
-    if (data.ok && data.likedSongs?.length) {
-      window.aiEngine.likedSongs = data.likedSongs;
-      window.aiEngine.rebuildProfile(); window.aiEngine.save();
-    }
-    if (data.ok && data.recentSongs?.length) localStorage.setItem('raagam_recent', JSON.stringify(data.recentSongs));
-  } catch(e) {}
-}
+// ═══ CLOUD SYNC (static mode — all data in localStorage) ═══
+async function cloudSave() { /* data already in localStorage via aiEngine.save() */ }
+async function cloudLoad() { /* data already in localStorage */ }
 
 // ═══ HELPERS ═══
 function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
