@@ -178,6 +178,12 @@ function playByEra(era) {
 }
 
 function playSong(song) {
+  if (isLoadingNext && currentSong?.id !== song.id) {
+    // Already loading a different song — abort current load first
+    audio.pause();
+    audio.removeAttribute('src');
+    audio.load();
+  }
   isLoadingNext = true;
   currentSong = song;
   activeLanguage = (song.language === 'hindi') ? 'hindi' : 'telugu';
@@ -246,6 +252,7 @@ function togglePlay() {
 }
 
 function playNext() {
+  if (isLoadingNext) return; // Prevent rapid fire
   if (!shuffleOn && currentSong) {
     const db = getActiveDB();
     const idx = db.findIndex(s => s.id === currentSong.id);
@@ -334,15 +341,16 @@ audio.addEventListener('ended', playNext);
 audio.addEventListener('error', () => {
   isLoadingNext = false;
   consecutiveErrors++;
-  if (consecutiveErrors > 3) {
+  if (consecutiveErrors > 2) {
     consecutiveErrors = 0;
-    showToast('Song unavailable — please try another');
+    showToast('Song unavailable — try another');
+    showLoading(false);
     return;
   }
   setTimeout(() => {
     if (activeLanguage === 'hindi') playRandomBollywood();
     else playNext();
-  }, 300);
+  }, 1000);
 });
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration) return;
