@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raagam — Telugu Music Player</title>
-  <link rel="stylesheet" href="style.css?v=1773383710" />
+  <link rel="stylesheet" href="style.css?v=1773384800" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%236c5ce7'/><stop offset='100%' stop-color='%23a29bfe'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M42 30v32a12 12 0 1 1-4-9V36l24-6v28a12 12 0 1 1-4-9V30L42 30z' fill='white' opacity='.95'/></svg>" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#6c5ce7" />
@@ -19,10 +19,10 @@
       <!-- Hero -->
       <div class="hero">
         <div class="hero-glow"></div>
-        <div class="hero-badge">🎵 FREE • 3,800+ SONGS</div>
+        <div class="hero-badge">🎵 FREE • 16,000+ SONGS</div>
         <h1 class="hero-title">Raagam</h1>
         <p class="hero-tagline">తెలుగు సంగీతం — Your Telugu Music Universe</p>
-        <p class="hero-desc">Stream thousands of Telugu songs from 1940 to 2026. AI-powered recommendations. Time-synced lyrics. All free.</p>
+        <p class="hero-desc">Stream thousands of Telugu & Bollywood songs from 1940 to 2026. AI-powered recommendations. Time-synced lyrics. All free.</p>
         <div class="hero-actions">
           <button class="btn-primary btn-lg" onclick="showAuth('signup')">Get Started Free</button>
           <button class="btn-ghost btn-lg" onclick="showAuth('login')">Sign In</button>
@@ -36,7 +36,7 @@
           <div class="feature-card">
             <div class="feature-icon">🎵</div>
             <h3>3,800+ Songs</h3>
-            <p>From Ghantasala classics to the latest Thaman & DSP hits. Every era, every mood.</p>
+            <p>From Ghantasala classics to the latest Thaman & DSP hits. 16,000+ Telugu + 540 Bollywood songs.</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">🤖</div>
@@ -49,9 +49,9 @@
             <p>Karaoke-style lyrics that scroll with the music. Sing along to your favorites.</p>
           </div>
           <div class="feature-card">
-            <div class="feature-icon">☁️</div>
-            <h3>Cloud Sync</h3>
-            <p>Your library, likes, and history sync across all devices. Never lose your collection.</p>
+            <div class="feature-icon">📱</div>
+            <h3>Works Offline</h3>
+            <p>Download songs for offline listening. Your library is always with you.</p>
           </div>
           <div class="feature-card">
             <div class="feature-icon">🎲</div>
@@ -133,7 +133,7 @@
       <div class="npb-controls">
         <button class="npb-btn" id="npb-heart"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></button>
         <button class="npb-btn npb-play" id="npb-play"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg></button>
-        <button class="npb-btn" id="npb-next"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 18h2V6h-2zm-8.5-6l8.5 6V6z" transform="scale(-1,1) translate(-24,0)"/></svg></button>
+        <button class="npb-btn" id="npb-next"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 18h2V6h-2zM6 18l8.5-6L6 6z"/></svg></button>
       </div>
     </div>
 
@@ -190,7 +190,7 @@
         </div>
         <div class="home-section">
           <div class="home-search-shortcut" onclick="showPage('search')">
-            <span class="home-search-icon">🔍</span>
+            <span class="home-search-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span>
             <span class="home-search-text">Search songs, artists, albums...</span>
           </div>
         </div>
@@ -363,18 +363,18 @@
 
     <!-- Nav -->
     <nav class="nav">
-      <button class="nav-btn active" data-page="home"><span class="nav-icon">🎵</span><span class="nav-label">Telugu</span></button>
-      <button class="nav-btn" data-page="bollywood"><span class="nav-icon">🎬</span><span class="nav-label">Bollywood</span></button>
-      <button class="nav-btn" data-page="search"><span class="nav-icon">🔍</span><span class="nav-label">Search</span></button>
+      <button class="nav-btn active" data-page="home"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 3l10 9h-3v9h-6v-6H11v6H5v-9H2z"/></svg></span><span class="nav-label">Telugu</span></button>
+      <button class="nav-btn" data-page="bollywood"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2"/><path d="M7 2v20M17 2v20"/></svg></span><span class="nav-label">Bollywood</span></button>
+      <button class="nav-btn" data-page="search"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg></span><span class="nav-label">Search</span></button>
       <button class="nav-btn" data-page="library"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg></span><span class="nav-label">Liked</span></button>
-      <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span><span class="nav-label">Profile</span></button>
+      <button class="nav-btn" data-page="profile"><span class="nav-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span><span class="nav-label">Profile</span></button>
     </nav>
   </div>
 
-  <script src="songs-db.js?v=1773383710"></script>
-  <script src="bollywood-songs-db.js?v=1773383710"></script>
-  <script src="ai-engine.js?v=1773383710"></script>
-  <script src="app.js?v=1773383710"></script>
+  <script src="songs-db.js?v=1773384800"></script>
+  <script src="bollywood-songs-db.js?v=1773384800"></script>
+  <script src="ai-engine.js?v=1773384800"></script>
+  <script src="app.js?v=1773384800"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

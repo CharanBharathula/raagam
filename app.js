@@ -133,7 +133,7 @@ function enterApp() {
   document.getElementById('auth-submit').disabled = false;
   
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
-  document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">☁️ Synced</span>`;
+  document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">💾 Local</span>`;
   
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
@@ -324,6 +324,7 @@ if (navigator.serviceWorker) {
 // ═══ PLAYBACK ═══
 function playRandomSong() {
   if (isLoadingNext) return;
+  bollywoodCategoryPool = null; // Clear Bollywood category when playing Telugu
   if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
     playRandomBollywood(); return;
   }
@@ -348,6 +349,8 @@ function getActiveDB() {
 
 function playByEra(era) {
   if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB) { showToast('Loading...'); return; }
+  activeLanguage = 'telugu';
+  bollywoodCategoryPool = null;
   const ranges = { 'classics':[0,1989], '1990s':[1990,1999], '2000s':[2000,2009], '2010s':[2010,2019], '2020s':[2020,2030] };
   const r = ranges[era];
   if (!r) { playRandomSong(); return; }
@@ -419,17 +422,9 @@ function playSong(song) {
     if (window.aiEngine) window.aiEngine.trackPlay(song);
   }).catch(e => {
     console.error('Play failed:', e);
+    // Don't retry here — let the audio 'error' event handler deal with retries
+    // This prevents double-firing (both .catch and error event) causing rapid cycling
     isLoadingNext = false; showLoading(false);
-    consecutiveErrors++;
-    if (consecutiveErrors > 3) {
-      consecutiveErrors = 0;
-      showToast('Song unavailable — please try another');
-      return;
-    }
-    setTimeout(() => {
-      if (activeLanguage === 'hindi') playRandomBollywood();
-      else playRandomSong();
-    }, 500);
   });
 }
 
@@ -506,13 +501,30 @@ async function fetchLyrics(song) {
   el.innerHTML = '<div class="lyrics-placeholder">Searching lyrics...</div>';
   const name = decodeHtml(song.name).replace(/\(From.*?\)/gi,'').replace(/\(.*?Version\)/gi,'').trim();
   const artist = decodeHtml(song.artists||'').split(',')[0].trim();
+  const songLang = song.language || 'telugu';
   try {
     const resp = await fetch(`${LRCLIB_API}?q=${encodeURIComponent(`${name} ${artist}`.substring(0,80))}`);
     if (!resp.ok) throw new Error('Network error');
     const results = await resp.json();
     if (results?.length) {
-      const synced = results.find(r => r.syncedLyrics);
-      const plain = results.find(r => r.plainLyrics);
+      // Filter: prefer results matching the song's language context
+      // For Telugu songs, try to find results with artist name match (since LRCLIB doesn't have language tags)
+      let filtered = results;
+      if (songLang === 'telugu') {
+        // Filter out results that look like Hindi/English covers of the same title
+        const artistLower = artist.toLowerCase();
+        const nameWords = name.toLowerCase().split(/\s+/);
+        filtered = results.filter(r => {
+          const rArtist = (r.artistName || '').toLowerCase();
+          const rTrack = (r.trackName || '').toLowerCase();
+          // Prefer if artist name partially matches, or track name closely matches
+          return rArtist.includes(artistLower) || artistLower.includes(rArtist.split(',')[0]?.trim()) ||
+                 nameWords.every(w => rTrack.includes(w));
+        });
+        if (!filtered.length) filtered = []; // No good match — don't show wrong lyrics
+      }
+      const synced = filtered.find(r => r.syncedLyrics);
+      const plain = filtered.find(r => r.plainLyrics);
       if (synced?.syncedLyrics) {
         syncedLyrics = parseLRC(synced.syncedLyrics);
         el.innerHTML = syncedLyrics.map((l,i) => `<div class="lyric-line" data-idx="${i}">${escHtml(l.text)}</div>`).join('');
@@ -543,17 +555,20 @@ function startLyricsSync() {
 audio.addEventListener('ended', () => playNext());
 audio.addEventListener('error', () => {
   isLoadingNext = false;
+  showLoading(false);
   consecutiveErrors++;
-  if (consecutiveErrors > 2) {
+  if (consecutiveErrors > 3) {
     consecutiveErrors = 0;
-    showToast('Song unavailable — try another');
-    showLoading(false);
+    isPlaying = false;
+    updatePlayBtn();
+    showToast('Multiple songs unavailable — tap play to try again');
     return;
   }
+  showToast(`Song unavailable, skipping... (${consecutiveErrors}/3)`);
   setTimeout(() => {
     if (activeLanguage === 'hindi') playRandomBollywood();
     else playNext();
-  }, 1000);
+  }, 1500);
 });
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration || isNaN(audio.duration)) return;
@@ -1076,8 +1091,10 @@ function playBollywoodByEra(era) {
   if (!r) { playRandomBollywood(); return; }
   const pool = BollywoodSongsDB.SONGS_DB.filter(s => { const y = parseInt(s.year); return y >= r[0] && y <= r[1]; });
   if (!pool.length) { playRandomBollywood(); return; }
-  const song = pool[Math.floor(Math.random() * pool.length)];
-  history.push(song); historyIndex = history.length - 1;
+  bollywoodCategoryPool = pool.slice().sort(() => Math.random() - 0.5);
+  activeLanguage = 'hindi';
+  const song = bollywoodCategoryPool[0];
+  history = [song]; historyIndex = 0;
   playSong(song); showPage('player');
 }
 
@@ -1127,20 +1144,7 @@ function renderBollywoodList() {
 
 // ═══ INIT ═══
 document.addEventListener('DOMContentLoaded', () => {
-  // Check existing session
-  try {
-    const s = JSON.parse(localStorage.getItem('raagam_session'));
-    if (s?.username && s?.token) {
-      currentUser = s;
-      enterApp();
-      return;
-    }
-  } catch(e) {}
-  
-  showLanding();
-});
-
-document.addEventListener('DOMContentLoaded', () => {
+  // Set up all event listeners
   document.querySelectorAll('.nav-btn[data-page]').forEach(btn => btn.addEventListener('click', () => showPage(btn.dataset.page)));
   document.getElementById('play-btn')?.addEventListener('click', togglePlay);
   document.getElementById('next-btn')?.addEventListener('click', () => playNext());
@@ -1158,6 +1162,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   initSwipe();
   initSearch();
+
+  // Check existing session
+  try {
+    const s = JSON.parse(localStorage.getItem('raagam_session'));
+    if (s?.username && s?.token) {
+      currentUser = s;
+      enterApp();
+      return;
+    }
+  } catch(e) {}
+  
+  showLanding();
 });
 
 // Clean up lyrics timer on page unload
