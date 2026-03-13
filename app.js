@@ -390,6 +390,8 @@ function showPage(name) {
   if (name==='library') renderLibrary();
   if (name==='profile') renderProfile();
   if (name==='home') { renderRecent(); updateHomeStats(); }
+  if (name==='search') { document.getElementById('search-input')?.focus(); }
+  if (name==='bollywood') renderBollywoodList();
 }
 
 // ═══ LIBRARY ═══
@@ -654,6 +656,107 @@ function initSwipe() {
   }, { passive: true });
 }
 
+// ═══ SEARCH ═══
+function getAllSongs() {
+  const telugu = SongsDB.SONGS_DB || [];
+  const bollywood = (typeof BollywoodSongsDB !== 'undefined' ? BollywoodSongsDB.SONGS_DB : []);
+  return [...telugu, ...bollywood];
+}
+
+function performSearch(query) {
+  if (!query || query.length < 2) return [];
+  const q = query.toLowerCase();
+  const all = getAllSongs();
+  return all.filter(s =>
+    s.name.toLowerCase().includes(q) ||
+    (s.artists || '').toLowerCase().includes(q) ||
+    (s.album || '').toLowerCase().includes(q)
+  ).slice(0, 50);
+}
+
+function renderSearchResults(results, query) {
+  const container = document.getElementById('search-results');
+  if (!query || query.length < 2) {
+    container.innerHTML = '<div class="search-empty-state"><div class="search-empty-icon">🎶</div><p>Search for your favourite songs</p><p class="search-hint">Try "Tum Hi Ho", "Pushpa", or "Arijit Singh"</p></div>';
+    return;
+  }
+  if (!results.length) {
+    container.innerHTML = `<div class="search-empty-state"><div class="search-empty-icon">😔</div><p>No results for "${escHtml(query)}"</p><p class="search-hint">Try a different spelling or keyword</p></div>`;
+    return;
+  }
+  container.innerHTML = results.map(s => `
+    <div class="search-result-item" onclick="playSongFromSearch('${s.id}','${s.language||'telugu'}')">
+      <img class="search-thumb" src="${s.image||''}" alt="" onerror="this.style.display='none'" loading="lazy" />
+      <div class="search-info">
+        <h4>${escHtml(s.name)}</h4>
+        <p>${escHtml(s.artists||'')} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}</p>
+      </div>
+    </div>`).join('');
+}
+
+function playSongFromSearch(id, lang) {
+  let song;
+  if (lang === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
+    song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
+  }
+  if (!song) song = SongsDB.SONGS_DB.find(s => s.id === id);
+  if (!song && typeof BollywoodSongsDB !== 'undefined') song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
+  if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); showPage('player'); }
+}
+
+function clearSearch() {
+  const input = document.getElementById('search-input');
+  input.value = '';
+  document.getElementById('search-clear').style.display = 'none';
+  renderSearchResults([], '');
+  input.focus();
+}
+
+function initSearch() {
+  const input = document.getElementById('search-input');
+  const clearBtn = document.getElementById('search-clear');
+  if (!input) return;
+  let debounce;
+  input.addEventListener('input', () => {
+    clearTimeout(debounce);
+    const q = input.value.trim();
+    clearBtn.style.display = q ? 'block' : 'none';
+    debounce = setTimeout(() => {
+      renderSearchResults(performSearch(q), q);
+    }, 200);
+  });
+}
+
+// ═══ BOLLYWOOD ═══
+function playRandomBollywood() {
+  if (typeof BollywoodSongsDB === 'undefined') return;
+  const song = BollywoodSongsDB.getRandomSong(currentSong?.id);
+  if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); }
+}
+
+function playBollywoodByEra(era) {
+  if (typeof BollywoodSongsDB === 'undefined') return;
+  const ranges = { '2020s': [2020,2029], '2010s': [2010,2019], '2000s': [2000,2009], '1990s': [1990,1999], 'classics': [1950,1989] };
+  const r = ranges[era];
+  if (!r) { playRandomBollywood(); return; }
+  const pool = BollywoodSongsDB.SONGS_DB.filter(s => { const y = parseInt(s.year); return y >= r[0] && y <= r[1]; });
+  if (!pool.length) { playRandomBollywood(); return; }
+  const song = pool[Math.floor(Math.random() * pool.length)];
+  history.push(song); historyIndex = history.length - 1;
+  playSong(song); showPage('player');
+}
+
+function renderBollywoodList() {
+  if (typeof BollywoodSongsDB === 'undefined') return;
+  const container = document.getElementById('bollywood-list');
+  if (!container) return;
+  container.innerHTML = BollywoodSongsDB.SONGS_DB.slice(0, 50).map(s => `
+    <div class="library-item" onclick="playSongFromSearch('${s.id}','hindi')">
+      <img class="library-thumb" src="${s.image||''}" alt="" onerror="this.style.display='none'" loading="lazy" />
+      <div class="library-info"><h4>${escHtml(s.name)}</h4><p>${escHtml(s.artists||'')}</p></div>
+    </div>`).join('');
+}
+
 // ═══ INIT ═══
 document.addEventListener('DOMContentLoaded', () => {
   // Check existing session
@@ -690,4 +793,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   initSwipe();
+  initSearch();
 });

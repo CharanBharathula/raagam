@@ -6,6 +6,9 @@
   <title>Raagam — Telugu Music Player</title>
   <link rel="stylesheet" href="style.css?v=1773383709" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>" />
+  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#6c5ce7" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 </head>
 <body>
@@ -185,6 +188,12 @@
           <div class="home-logo">RAAGAM</div>
         </div>
         <div class="home-section">
+          <div class="home-search-shortcut" onclick="showPage('search')">
+            <span class="home-search-icon">🔍</span>
+            <span class="home-search-text">Search songs, artists, albums...</span>
+          </div>
+        </div>
+        <div class="home-section">
           <h3>Quick Play</h3>
           <div class="chip-row">
             <button class="chip" onclick="playByEra('2020s')">🔥 Latest</button>
@@ -301,17 +310,72 @@
       </div>
     </div>
 
+    <!-- Search Page -->
+    <div id="page-search" class="page">
+      <div class="page-scroll">
+        <div class="search-header">
+          <h2>🔍 Search</h2>
+          <p class="search-subtitle">Search across Telugu & Bollywood</p>
+        </div>
+        <div class="search-bar-container">
+          <input type="text" id="search-input" class="search-input" placeholder="Search songs, artists, albums..." autocomplete="off" />
+          <button class="search-clear-btn" id="search-clear" onclick="clearSearch()" style="display:none">✕</button>
+        </div>
+        <div id="search-results" class="search-results">
+          <div class="search-empty-state">
+            <div class="search-empty-icon">🎶</div>
+            <p>Search for your favourite songs</p>
+            <p class="search-hint">Try "Tum Hi Ho", "Pushpa", or "Arijit Singh"</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bollywood Page -->
+    <div id="page-bollywood" class="page">
+      <div class="page-scroll">
+        <div class="home-header">
+          <div class="home-greeting">🎬 Bollywood</div>
+          <div class="home-logo">RAAGAM</div>
+        </div>
+        <div class="home-section">
+          <h3>Quick Play</h3>
+          <div class="chip-row">
+            <button class="chip" onclick="playBollywoodByEra('2020s')">🔥 2020s</button>
+            <button class="chip" onclick="playBollywoodByEra('2010s')">💫 2010s</button>
+            <button class="chip" onclick="playBollywoodByEra('2000s')">✨ 2000s</button>
+            <button class="chip" onclick="playBollywoodByEra('1990s')">🎭 90s</button>
+            <button class="chip" onclick="playBollywoodByEra('classics')">🏛️ Classics</button>
+          </div>
+        </div>
+        <div class="home-section">
+          <h3>🎲 Random Bollywood</h3>
+          <button class="big-play-btn" onclick="playRandomBollywood(); showPage('player')">
+            <span class="big-play-icon">▶</span>
+            <span>Play Random Hindi Song</span>
+          </button>
+        </div>
+        <div class="home-section">
+          <h3>🎵 All Bollywood Songs</h3>
+          <div id="bollywood-list" class="library-grid"></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Nav -->
     <nav class="nav">
-      <button class="nav-btn active" data-page="home"><span class="nav-icon">🏠</span><span class="nav-label">Home</span></button>
-      <button class="nav-btn" data-page="player"><span class="nav-icon">🎵</span><span class="nav-label">Player</span></button>
-      <button class="nav-btn" data-page="library"><span class="nav-icon">♥</span><span class="nav-label">Library</span></button>
+      <button class="nav-btn active" data-page="home"><span class="nav-icon">🎵</span><span class="nav-label">Telugu</span></button>
+      <button class="nav-btn" data-page="bollywood"><span class="nav-icon">🎬</span><span class="nav-label">Bollywood</span></button>
+      <button class="nav-btn" data-page="search"><span class="nav-icon">🔍</span><span class="nav-label">Search</span></button>
+      <button class="nav-btn" data-page="library"><span class="nav-icon">♥</span><span class="nav-label">Liked</span></button>
       <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span><span class="nav-label">Profile</span></button>
     </nav>
   </div>
 
   <script src="songs-db.js?v=1773383709"></script>
+  <script src="bollywood-songs-db.js?v=1773383709"></script>
   <script src="ai-engine.js?v=1773383709"></script>
   <script src="app.js?v=1773383709"></script>
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
