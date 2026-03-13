@@ -10,6 +10,7 @@ let syncedLyrics = [];
 let lyricsTimer = null;
 let shuffleOn = true;
 let activeLanguage = 'telugu'; // Track current playback language mode
+let consecutiveErrors = 0; // Track consecutive playback errors
 let currentUser = null;
 let authMode = 'login';
 
@@ -211,6 +212,7 @@ function playSong(song) {
   audio.src = song.audio;
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
+    consecutiveErrors = 0; // Reset on successful play
     updatePlayBtn();
     document.querySelector('.album-art-container')?.classList.add('playing');
     saveRecent(song);
@@ -218,7 +220,16 @@ function playSong(song) {
   }).catch(e => {
     console.error('Play failed:', e);
     isLoadingNext = false; showLoading(false);
-    setTimeout(playRandomSong, 300);
+    consecutiveErrors++;
+    if (consecutiveErrors > 3) {
+      consecutiveErrors = 0;
+      showToast('Song unavailable — please try another');
+      return;
+    }
+    setTimeout(() => {
+      if (activeLanguage === 'hindi') playRandomBollywood();
+      else playRandomSong();
+    }, 300);
   });
 }
 
@@ -253,9 +264,12 @@ function playPrev() {
 }
 
 function updatePlayBtn() {
-  const icon = isPlaying ? '⏸' : '▶';
-  document.getElementById('play-btn').textContent = icon;
-  document.getElementById('npb-play').textContent = icon;
+  const playSvg = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const pauseSvg = '<svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>';
+  const npbPlaySvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
+  const npbPauseSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>';
+  document.getElementById('play-btn').innerHTML = isPlaying ? pauseSvg : playSvg;
+  document.getElementById('npb-play').innerHTML = isPlaying ? npbPauseSvg : npbPlaySvg;
 }
 
 function toggleShuffle() {
@@ -317,7 +331,19 @@ function startLyricsSync() {
 
 // ═══ AUDIO EVENTS ═══
 audio.addEventListener('ended', playNext);
-audio.addEventListener('error', () => { isLoadingNext = false; setTimeout(playNext, 300); });
+audio.addEventListener('error', () => {
+  isLoadingNext = false;
+  consecutiveErrors++;
+  if (consecutiveErrors > 3) {
+    consecutiveErrors = 0;
+    showToast('Song unavailable — please try another');
+    return;
+  }
+  setTimeout(() => {
+    if (activeLanguage === 'hindi') playRandomBollywood();
+    else playNext();
+  }, 300);
+});
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration) return;
   const pct = (audio.currentTime/audio.duration)*100;
@@ -345,15 +371,19 @@ function toggleLike() {
 }
 function updateHeartBtn() {
   const btn = document.getElementById('heart-btn');
-  if (!currentSong) { btn.classList.remove('liked'); btn.textContent='♡'; return; }
+  const heartEmpty = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  const heartFilled = '<svg width="24" height="24" viewBox="0 0 24 24" fill="var(--heart, #e74c3c)" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  if (!currentSong) { btn.classList.remove('liked'); btn.innerHTML=heartEmpty; return; }
   const liked = window.aiEngine.isLiked(currentSong.id);
-  btn.classList.toggle('liked', liked); btn.textContent = liked ? '♥' : '♡';
+  btn.classList.toggle('liked', liked); btn.innerHTML = liked ? heartFilled : heartEmpty;
 }
 function updateNpbHeart() {
   const btn = document.getElementById('npb-heart');
+  const heartEmpty = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
+  const heartFilled = '<svg width="18" height="18" viewBox="0 0 24 24" fill="var(--heart, #e74c3c)" stroke="none"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>';
   if (!currentSong) return;
   const liked = window.aiEngine.isLiked(currentSong.id);
-  btn.textContent = liked ? '♥' : '♡'; btn.style.color = liked ? 'var(--heart)' : '';
+  btn.innerHTML = liked ? heartFilled : heartEmpty; btn.style.color = liked ? 'var(--heart)' : '';
 }
 
 // ═══ RECENT ═══
@@ -580,6 +610,20 @@ function updateHomeStats() {
 async function cloudSave() { /* data already in localStorage via aiEngine.save() */ }
 async function cloudLoad() { /* data already in localStorage */ }
 
+// ═══ TOAST ═══
+function showToast(msg) {
+  let el = document.getElementById('toast-msg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast-msg';
+    el.className = 'toast-msg';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
 // ═══ HELPERS ═══
 function showLoading(show) { document.getElementById('loading').style.display = show ? 'flex' : 'none'; }
 function escHtml(s) { const d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
@@ -757,15 +801,69 @@ function playBollywoodByEra(era) {
   playSong(song); showPage('player');
 }
 
+let bollywoodCategoryPool = null; // Current category filtered pool
+
+const BOLLYWOOD_CATEGORIES = [
+  { key: '2020s', emoji: '🔥', name: '2020s Hits', desc: 'Latest Bollywood bangers', gradient: 'linear-gradient(135deg, #ff6b35, #f7c948)', filter: s => parseInt(s.year) >= 2020 },
+  { key: '2010s', emoji: '💫', name: '2010s Hits', desc: 'Arijit Singh era', gradient: 'linear-gradient(135deg, #6c5ce7, #a29bfe)', filter: s => { const y = parseInt(s.year); return y >= 2010 && y <= 2019; } },
+  { key: '2000s', emoji: '✨', name: '2000s Hits', desc: 'Golden Bollywood', gradient: 'linear-gradient(135deg, #00b894, #55efc4)', filter: s => { const y = parseInt(s.year); return y >= 2000 && y <= 2009; } },
+  { key: '1990s', emoji: '🎭', name: '90s Classics', desc: 'SRK & romance era', gradient: 'linear-gradient(135deg, #e17055, #fab1a0)', filter: s => { const y = parseInt(s.year); return y >= 1990 && y <= 1999; } },
+  { key: 'classics', emoji: '🏛️', name: 'Evergreen Classics', desc: 'Timeless legends', gradient: 'linear-gradient(135deg, #636e72, #b2bec3)', filter: s => parseInt(s.year) < 1990 },
+  { key: 'romantic', emoji: '💕', name: 'Romantic', desc: 'Love songs across all eras', gradient: 'linear-gradient(135deg, #fd79a8, #e84393)', filter: s => s.tags && s.tags.includes('romantic') },
+  { key: 'party', emoji: '🎉', name: 'Party & Dance', desc: 'Upbeat party tracks', gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)', filter: s => s.tags && s.tags.includes('party') },
+  { key: 'sad', emoji: '😢', name: 'Sad & Emotional', desc: 'Heartbreak anthems', gradient: 'linear-gradient(135deg, #74b9ff, #0984e3)', filter: s => s.tags && s.tags.includes('sad') },
+  { key: 'sufi', emoji: '🕌', name: 'Sufi & Soulful', desc: 'Qawwalis and sufi rock', gradient: 'linear-gradient(135deg, #a29bfe, #6c5ce7)', filter: s => s.tags && s.tags.includes('sufi') },
+];
+
+function playBollywoodCategory(categoryKey) {
+  if (typeof BollywoodSongsDB === 'undefined') return;
+  const cat = BOLLYWOOD_CATEGORIES.find(c => c.key === categoryKey);
+  if (!cat) { playRandomBollywood(); return; }
+  const pool = BollywoodSongsDB.SONGS_DB.filter(cat.filter);
+  if (!pool.length) { showToast('No songs in this category'); return; }
+  // Shuffle the pool
+  bollywoodCategoryPool = pool.slice().sort(() => Math.random() - 0.5);
+  activeLanguage = 'hindi';
+  const song = bollywoodCategoryPool[0];
+  history = [song]; historyIndex = 0;
+  playSong(song); showPage('player');
+}
+
+// Override playNext/playPrev to respect category pool
+const _originalPlayNext = playNext;
+playNext = function() {
+  if (bollywoodCategoryPool && activeLanguage === 'hindi') {
+    const idx = bollywoodCategoryPool.findIndex(s => s.id === currentSong?.id);
+    const next = (idx >= 0 && idx < bollywoodCategoryPool.length - 1) ? bollywoodCategoryPool[idx + 1] : bollywoodCategoryPool[0];
+    history.push(next); historyIndex = history.length - 1;
+    playSong(next); return;
+  }
+  _originalPlayNext();
+};
+
+// Clear category pool when switching to Telugu or playing random
+const _originalPlayRandomSong = playRandomSong;
+playRandomSong = function() {
+  bollywoodCategoryPool = null;
+  _originalPlayRandomSong();
+};
+
 function renderBollywoodList() {
   if (typeof BollywoodSongsDB === 'undefined') return;
-  const container = document.getElementById('bollywood-list');
+  const container = document.getElementById('bollywood-categories');
   if (!container) return;
-  container.innerHTML = BollywoodSongsDB.SONGS_DB.slice(0, 50).map(s => `
-    <div class="library-item" onclick="playSongFromSearch('${s.id}','hindi')">
-      <img class="library-thumb" src="${s.image||''}" alt="" onerror="this.style.display='none'" loading="lazy" />
-      <div class="library-info"><h4>${escHtml(s.name)}</h4><p>${escHtml(s.artists||'')}</p></div>
-    </div>`).join('');
+  container.innerHTML = BOLLYWOOD_CATEGORIES.map(cat => {
+    const count = BollywoodSongsDB.SONGS_DB.filter(cat.filter).length;
+    return `<div class="bw-category-card" style="background:${cat.gradient}" onclick="playBollywoodCategory('${cat.key}')">
+      <div class="bw-cat-emoji">${cat.emoji}</div>
+      <div class="bw-cat-info">
+        <div class="bw-cat-name">${cat.name}</div>
+        <div class="bw-cat-desc">${cat.desc}</div>
+        <div class="bw-cat-count">${count} songs</div>
+      </div>
+      <button class="bw-cat-play" onclick="event.stopPropagation(); playBollywoodCategory('${cat.key}')">▶ Play All</button>
+    </div>`;
+  }).join('');
 }
 
 // ═══ INIT ═══

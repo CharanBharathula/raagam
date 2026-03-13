@@ -494,3 +494,40 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .home-search-shortcut:active { background: rgba(108,92,231,0.15); border-color: #6c5ce7; }
 .home-search-icon { font-size: 18px; }
 .home-search-text { color: rgba(255,255,255,0.4); font-size: 15px; }
+
+/* Bollywood Category Cards */
+.bw-categories-grid { display: flex; flex-direction: column; gap: 12px; }
+.bw-category-card {
+  display: flex; align-items: center; gap: 14px; padding: 16px 18px;
+  border-radius: 16px; cursor: pointer; position: relative; overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.bw-category-card::before {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(0,0,0,0.25); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+}
+.bw-category-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+.bw-category-card:active { transform: scale(0.98); }
+.bw-cat-emoji { font-size: 36px; position: relative; z-index: 1; flex-shrink: 0; }
+.bw-cat-info { flex: 1; position: relative; z-index: 1; min-width: 0; }
+.bw-cat-name { font-size: 16px; font-weight: 700; color: #fff; }
+.bw-cat-desc { font-size: 12px; color: rgba(255,255,255,0.7); margin-top: 2px; }
+.bw-cat-count { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 4px; font-weight: 600; }
+.bw-cat-play {
+  position: relative; z-index: 1; flex-shrink: 0;
+  padding: 8px 14px; border-radius: 20px; border: none;
+  background: rgba(255,255,255,0.2); backdrop-filter: blur(4px);
+  color: #fff; font-size: 12px; font-weight: 700; font-family: var(--font);
+  cursor: pointer; transition: background 0.2s;
+}
+.bw-cat-play:hover { background: rgba(255,255,255,0.35); }
+
+/* Toast */
+.toast-msg {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: rgba(30,30,30,0.95); color: #fff; padding: 12px 24px; border-radius: 12px;
+  font-size: 14px; font-family: var(--font); z-index: 9999; opacity: 0;
+  transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+  backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+}
+.toast-msg.show { opacity: 1; transform: translateX(-50%) translateY(0); }
