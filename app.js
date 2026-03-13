@@ -324,10 +324,8 @@ if (navigator.serviceWorker) {
 // ═══ PLAYBACK ═══
 function playRandomSong() {
   if (isLoadingNext) return;
-  bollywoodCategoryPool = null; // Clear Bollywood category when playing Telugu
-  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
-    playRandomBollywood(); return;
-  }
+  bollywoodCategoryPool = null;
+  activeLanguage = 'telugu'; // Home page random always plays Telugu
   if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB || !SongsDB.SONGS_DB.length) {
     showToast('Songs database not loaded yet'); return;
   }
@@ -457,7 +455,12 @@ function playNext() {
       playSong(song); return;
     }
   }
-  playRandomSong();
+  // Play random from current language
+  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
+    playRandomBollywood();
+  } else {
+    playRandomSong();
+  }
 }
 
 function playPrev() {
