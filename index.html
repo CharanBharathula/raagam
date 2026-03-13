@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Raagam — Telugu Music Player</title>
+  <link rel="stylesheet" href="style.css?v=1773383709" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ═══ LANDING PAGE ═══ -->
+  <div id="landing" class="landing">
+    <div class="landing-scroll">
+      <!-- Hero -->
+      <div class="hero">
+        <div class="hero-glow"></div>
+        <div class="hero-badge">🎵 FREE • 3,800+ SONGS</div>
+        <h1 class="hero-title">Raagam</h1>
+        <p class="hero-tagline">తెలుగు సంగీతం — Your Telugu Music Universe</p>
+        <p class="hero-desc">Stream thousands of Telugu songs from 1940 to 2026. AI-powered recommendations. Time-synced lyrics. All free.</p>
+        <div class="hero-actions">
+          <button class="btn-primary btn-lg" onclick="showAuth('signup')">Get Started Free</button>
+          <button class="btn-ghost btn-lg" onclick="showAuth('login')">Sign In</button>
+        </div>
+      </div>
+
+      <!-- Features -->
+      <div class="features-section">
+        <h2 class="section-title">Why Raagam?</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">🎵</div>
+            <h3>3,800+ Songs</h3>
+            <p>From Ghantasala classics to the latest Thaman & DSP hits. Every era, every mood.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🤖</div>
+            <h3>AI Recommendations</h3>
+            <p>The more you listen, the smarter it gets. Personalized suggestions based on your taste.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📝</div>
+            <h3>Synced Lyrics</h3>
+            <p>Karaoke-style lyrics that scroll with the music. Sing along to your favorites.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">☁️</div>
+            <h3>Cloud Sync</h3>
+            <p>Your library, likes, and history sync across all devices. Never lose your collection.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🎲</div>
+            <h3>Random Discovery</h3>
+            <p>Hit shuffle and discover hidden gems from 8 decades of Telugu cinema music.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Taste Profile</h3>
+            <p>AI builds your music DNA — see your top artists, eras, and get personalized insights.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Eras -->
+      <div class="eras-section">
+        <h2 class="section-title">Every Era of Telugu Music</h2>
+        <div class="eras-row">
+          <div class="era-pill">🏛️ 1940s–70s Classics</div>
+          <div class="era-pill">🎭 80s & 90s Gold</div>
+          <div class="era-pill">✨ 2000s Hits</div>
+          <div class="era-pill">💫 2010s Blockbusters</div>
+          <div class="era-pill">🔥 2020s Latest</div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-section">
+        <h2>Ready to explore?</h2>
+        <p>Create a free account and start listening in seconds.</p>
+        <button class="btn-primary btn-lg" onclick="showAuth('signup')">Create Free Account</button>
+      </div>
+
+      <div class="landing-footer">
+        <p>Raagam • Built with ❤️ for Telugu music lovers</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ AUTH PAGE ═══ -->
+  <div id="auth-page" class="auth-page hidden">
+    <div class="auth-container">
+      <button class="auth-back" onclick="showLanding()">← Back</button>
+      <div class="auth-logo">🎵</div>
+      <h1 class="auth-title" id="auth-title">Sign In</h1>
+      <p class="auth-subtitle" id="auth-subtitle">Welcome back to Raagam</p>
+
+      <div id="auth-error" class="auth-error hidden"></div>
+
+      <div id="signup-fields" class="hidden">
+        <input type="text" id="auth-display" placeholder="Display Name" class="auth-input" autocomplete="name" />
+      </div>
+      <input type="text" id="auth-username" placeholder="Username" class="auth-input" autocapitalize="off" autocomplete="username" />
+      <input type="password" id="auth-password" placeholder="Password" class="auth-input" autocomplete="current-password" />
+
+      <button class="btn-primary btn-full" id="auth-submit" onclick="submitAuth()">Sign In</button>
+
+      <div class="auth-divider"><span>or</span></div>
+
+      <div class="auth-switch">
+        <span id="auth-switch-text">Don't have an account?</span>
+        <button class="auth-link" id="auth-switch-btn" onclick="toggleAuthMode()">Sign Up</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ APP (hidden until logged in) ═══ -->
+  <div id="app-container" class="app-container hidden">
+
+    <!-- Now Playing Bar -->
+    <div id="now-playing-bar" class="now-playing-bar hidden">
+      <div class="npb-left" onclick="showPage('player')">
+        <img id="npb-art" class="npb-art" src="" alt="" />
+        <div class="npb-info">
+          <div class="npb-title" id="npb-title"></div>
+          <div class="npb-artist" id="npb-artist"></div>
+        </div>
+      </div>
+      <div class="npb-controls">
+        <button class="npb-btn" id="npb-heart">♡</button>
+        <button class="npb-btn npb-play" id="npb-play">▶</button>
+        <button class="npb-btn" id="npb-next">⏭</button>
+      </div>
+    </div>
+
+    <!-- Player Page -->
+    <div id="page-player" class="page active">
+      <div class="player-bg" id="player-bg"></div>
+      <div class="player-content">
+        <div class="player-top-actions">
+          <button class="icon-btn" onclick="showPage('home')">⌄</button>
+          <div class="player-top-label">NOW PLAYING</div>
+          <button class="icon-btn" id="lyrics-toggle" onclick="toggleLyrics()">☰</button>
+        </div>
+        <div class="album-art-container" id="album-art">
+          <div class="album-art-placeholder">🎵<br><span style="font-size:0.8rem;opacity:0.7">Tap play to start</span></div>
+        </div>
+        <div id="lyrics-panel" class="lyrics-panel hidden">
+          <div id="lyrics-content" class="lyrics-content">
+            <div class="lyrics-placeholder">♪ Lyrics will appear here</div>
+          </div>
+        </div>
+        <div class="song-info">
+          <div class="song-title" id="song-title">Raagam</div>
+          <div class="song-artist" id="song-artist">Discover Telugu Music</div>
+          <div class="song-album" id="song-album"></div>
+        </div>
+        <div class="progress-container">
+          <div class="progress-bar" id="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+            <div class="progress-knob" id="progress-knob"></div>
+          </div>
+          <div class="progress-times">
+            <span id="time-current">0:00</span>
+            <span id="time-total">0:00</span>
+          </div>
+        </div>
+        <div class="controls">
+          <button class="ctrl-btn shuffle-btn" id="shuffle-btn" onclick="toggleShuffle()">🔀</button>
+          <button class="ctrl-btn" id="prev-btn">⏮</button>
+          <button class="ctrl-btn play-btn" id="play-btn">▶</button>
+          <button class="ctrl-btn" id="next-btn">⏭</button>
+          <button class="ctrl-btn heart-btn-main" id="heart-btn">♡</button>
+        </div>
+        <div id="loading" class="loading" style="display:none"><div class="spinner"></div></div>
+      </div>
+    </div>
+
+    <!-- Home Page -->
+    <div id="page-home" class="page">
+      <div class="page-scroll">
+        <div class="home-header">
+          <div class="home-greeting" id="home-greeting">Good evening</div>
+          <div class="home-logo">RAAGAM</div>
+        </div>
+        <div class="home-section">
+          <h3>Quick Play</h3>
+          <div class="chip-row">
+            <button class="chip" onclick="playByEra('2020s')">🔥 Latest</button>
+            <button class="chip" onclick="playByEra('2010s')">💫 2010s</button>
+            <button class="chip" onclick="playByEra('2000s')">✨ 2000s</button>
+            <button class="chip" onclick="playByEra('1990s')">🎭 90s</button>
+            <button class="chip" onclick="playByEra('classics')">🏛️ Classics</button>
+          </div>
+        </div>
+        <div class="home-section">
+          <h3>🎲 Random Discovery</h3>
+          <button class="big-play-btn" onclick="playRandomSong(); showPage('player')">
+            <span class="big-play-icon">▶</span>
+            <span>Play Random Song</span>
+          </button>
+        </div>
+        <div class="home-section" id="recently-played-section" style="display:none">
+          <h3>Recently Played</h3>
+          <div class="recent-grid" id="recent-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>📊 Your Stats</h3>
+          <div class="home-stats"><div class="mini-stat"><span class="mini-stat-num" id="stat-songs">0</span> songs available</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Library Page -->
+    <div id="page-library" class="page">
+      <div class="page-scroll">
+        <div class="library-header">
+          <h2>Your Library</h2>
+          <span class="library-count" id="library-count"></span>
+        </div>
+        <div id="library-list" class="library-grid"></div>
+      </div>
+    </div>
+
+    <!-- Profile Page -->
+    <div id="page-profile" class="page">
+      <div class="page-scroll" id="profile-scroll">
+        <!-- Hero section - dynamic gradient bg -->
+        <div class="profile-hero" id="profile-hero">
+          <div class="profile-hero-glow" id="profile-hero-glow"></div>
+          <div class="profile-avatar-ring">
+            <div class="profile-avatar">🎧</div>
+          </div>
+          <div class="profile-name" id="profile-name">Music Lover</div>
+          <div class="profile-sub" id="profile-sub-text">Your AI-powered taste profile</div>
+          <div class="profile-personality" id="profile-personality"></div>
+        </div>
+
+        <!-- Music DNA Bar -->
+        <div class="profile-card dna-card">
+          <h3>🧬 Your Music DNA</h3>
+          <div class="dna-bar" id="profile-dna-bar"></div>
+          <div class="dna-legend" id="profile-dna-legend"></div>
+        </div>
+
+        <!-- Listening Stats -->
+        <div class="profile-card">
+          <h3>📊 Listening Stats</h3>
+          <div class="stat-grid" id="profile-stats"></div>
+        </div>
+
+        <!-- Top Singers -->
+        <div class="profile-card" id="profile-singers-card">
+          <h3>🎤 Top Singers</h3>
+          <div class="rank-list" id="profile-singers"></div>
+        </div>
+
+        <!-- Top Music Directors -->
+        <div class="profile-card" id="profile-md-card">
+          <h3>🎼 Top Music Directors</h3>
+          <div class="rank-list" id="profile-music-directors"></div>
+        </div>
+
+        <!-- Favorite Genre -->
+        <div class="profile-card" id="profile-genre-card">
+          <div class="genre-badge-container" id="profile-genre-badge"></div>
+        </div>
+
+        <!-- Top Decades Timeline -->
+        <div class="profile-card">
+          <h3>📅 Decades Timeline</h3>
+          <div class="decades-timeline" id="profile-decades"></div>
+        </div>
+
+        <!-- Recent Likes -->
+        <div class="profile-card" id="profile-recent-card">
+          <h3>💜 Recent Likes</h3>
+          <div class="recent-likes-row" id="profile-recent-likes"></div>
+        </div>
+
+        <!-- AI Insights -->
+        <div class="profile-card">
+          <h3>🧠 AI Insights</h3>
+          <div id="profile-insights"></div>
+        </div>
+
+        <!-- Share section -->
+        <div class="profile-card share-card">
+          <div class="share-inner">
+            <span class="share-icon">🧬</span>
+            <div>
+              <div class="share-title">Your Music DNA</div>
+              <div class="share-sub">Screenshot & share your music identity!</div>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn-outline-sm" style="margin:16px auto;display:block" onclick="signOut()">Sign Out</button>
+        <div style="height:24px"></div>
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="nav">
+      <button class="nav-btn active" data-page="home"><span class="nav-icon">🏠</span><span class="nav-label">Home</span></button>
+      <button class="nav-btn" data-page="player"><span class="nav-icon">🎵</span><span class="nav-label">Player</span></button>
+      <button class="nav-btn" data-page="library"><span class="nav-icon">♥</span><span class="nav-label">Library</span></button>
+      <button class="nav-btn" data-page="profile"><span class="nav-icon">👤</span><span class="nav-label">Profile</span></button>
+    </nav>
+  </div>
+
+  <script src="songs-db.js?v=1773383709"></script>
+  <script src="ai-engine.js?v=1773383709"></script>
+  <script src="app.js?v=1773383709"></script>
+</body>
+</html>
