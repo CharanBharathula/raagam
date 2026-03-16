@@ -594,8 +594,35 @@ function fmtTime(s) { if (isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec
 
 function seekTo(e) {
   if (!audio.duration || isNaN(audio.duration)) return;
-  const rect = e.currentTarget.getBoundingClientRect();
-  audio.currentTime = Math.max(0,Math.min(1,(e.clientX-rect.left)/rect.width)) * audio.duration;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const bar = document.getElementById('progress-bar');
+  if (!bar) return;
+  const rect = bar.getBoundingClientRect();
+  audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * audio.duration;
+}
+
+function initProgressDrag() {
+  const bar = document.getElementById('progress-bar');
+  if (!bar) return;
+  let dragging = false;
+
+  function onMove(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    seekTo(e);
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove('dragging');
+  }
+
+  bar.addEventListener('mousedown', e => { dragging = true; bar.classList.add('dragging'); seekTo(e); });
+  bar.addEventListener('touchstart', e => { dragging = true; bar.classList.add('dragging'); seekTo(e); }, { passive: false });
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onEnd);
+  document.addEventListener('touchend', onEnd);
 }
 
 // MediaSession API for lock screen controls
@@ -1157,6 +1184,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('npb-play')?.addEventListener('click', togglePlay);
   document.getElementById('npb-next')?.addEventListener('click', () => playNext());
   document.getElementById('progress-bar')?.addEventListener('click', seekTo);
+  initProgressDrag();
   document.getElementById('shuffle-btn')?.classList.add('active');
   
   ['auth-username','auth-password','auth-display'].forEach(id => {

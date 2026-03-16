@@ -184,12 +184,14 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
   z-index: 100; border-top: 1px solid rgba(255,255,255,0.06);
 }
 .nav-btn {
-  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: none; border: none; color: var(--text-muted);
-  font-size: 10px; font-family: var(--font); padding: 8px 16px; cursor: pointer; transition: color 0.2s;
+  font-size: 11px; font-family: var(--font); padding: 10px 16px; cursor: pointer; transition: color 0.2s;
+  min-width: 56px;
 }
-.nav-btn .nav-icon { font-size: 22px; }
+.nav-btn .nav-icon { font-size: 26px; line-height: 1; }
 .nav-btn.active { color: var(--accent); }
+.nav-btn.active .nav-icon { transform: scale(1.1); }
 
 /* ── Now Playing Bar ── */
 .now-playing-bar {
@@ -226,7 +228,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 }
 .player-top-actions { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 4px 0; }
 .player-top-label { font-size: 11px; letter-spacing: 2px; color: var(--text-secondary); font-weight: 600; }
-.icon-btn { background: none; border: none; color: var(--text); font-size: 24px; padding: 8px; cursor: pointer; opacity: 0.7; }
+.icon-btn { background: none; border: none; color: var(--text); font-size: 28px; padding: 10px; cursor: pointer; opacity: 0.85; transition: opacity 0.2s; }
 .album-art-container {
   width: min(85vw, 340px); height: min(85vw, 340px);
   border-radius: 16px; overflow: hidden;
@@ -256,19 +258,19 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .song-artist { font-size: 14px; color: var(--text-secondary); margin-top: 4px; }
 .song-album { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
 .progress-container { width: 100%; padding: 0 4px; }
-.progress-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.15); border-radius: 4px; cursor: pointer; position: relative; transition: height 0.15s; }
-.progress-bar:hover { height: 6px; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; width: 0; transition: width 0.1s linear; }
-.progress-knob { position: absolute; top: 50%; right: 0; width: 12px; height: 12px; background: var(--accent); border-radius: 50%; transform: translate(50%, -50%) scale(0); transition: transform 0.15s; }
-.progress-bar:hover .progress-knob { transform: translate(50%, -50%) scale(1); }
-.progress-times { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 6px; font-variant-numeric: tabular-nums; }
-.controls { display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; padding: 8px 0 16px; }
-.ctrl-btn { background: none; border: none; color: var(--text); font-size: 24px; padding: 12px; cursor: pointer; transition: transform 0.15s; opacity: 0.85; }
-.ctrl-btn:active { transform: scale(0.9); }
-.play-btn { width: 64px; height: 64px; background: var(--accent) !important; border-radius: 50%; font-size: 26px; color: #000 !important; display: flex; align-items: center; justify-content: center; opacity: 1 !important; box-shadow: 0 4px 20px var(--accent-glow); }
-.shuffle-btn { font-size: 18px; opacity: 0.5; }
+.progress-bar { width: 100%; height: 5px; background: rgba(255,255,255,0.15); border-radius: 4px; cursor: pointer; position: relative; transition: height 0.15s; touch-action: none; }
+.progress-bar:hover, .progress-bar:active { height: 8px; }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; width: 0; transition: width 0.1s linear; pointer-events: none; }
+.progress-knob { position: absolute; top: 50%; right: 0; width: 20px; height: 20px; background: #fff; border-radius: 50%; transform: translate(50%, -50%) scale(1); transition: transform 0.15s; box-shadow: 0 2px 8px rgba(0,0,0,0.5); pointer-events: none; }
+.progress-bar:hover .progress-knob, .progress-bar.dragging .progress-knob { transform: translate(50%, -50%) scale(1.2); }
+.progress-times { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.controls { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 8px 0 16px; }
+.ctrl-btn { background: none; border: none; color: var(--text); font-size: 28px; padding: 12px; cursor: pointer; transition: transform 0.15s, opacity 0.2s; opacity: 0.9; min-width: 48px; min-height: 48px; display: flex; align-items: center; justify-content: center; }
+.ctrl-btn:active { transform: scale(0.88); }
+.play-btn { width: 72px; height: 72px; background: var(--accent) !important; border-radius: 50%; font-size: 30px; color: #000 !important; display: flex; align-items: center; justify-content: center; opacity: 1 !important; box-shadow: 0 4px 24px var(--accent-glow); flex-shrink: 0; }
+.shuffle-btn { font-size: 22px; opacity: 0.55; }
 .shuffle-btn.active { opacity: 1; color: var(--accent); }
-.heart-btn-main { font-size: 22px; }
+.heart-btn-main { font-size: 26px; }
 .heart-btn-main.liked { color: var(--heart); animation: heartPop 0.3s ease; }
 @keyframes heartPop { 0%{transform:scale(1)} 50%{transform:scale(1.3)} 100%{transform:scale(1)} }
 .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
@@ -419,6 +421,13 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
   .hero-title { font-size: 42px; }
   .album-art-container { width: 75vw; height: 75vw; }
   .features-grid { grid-template-columns: 1fr; }
+}
+
+/* Mobile: always show progress knob (no hover needed on touch) */
+@media (hover: none) and (pointer: coarse) {
+  .progress-knob { transform: translate(50%, -50%) scale(1) !important; width: 22px; height: 22px; }
+  .progress-bar { height: 6px; }
+  .progress-bar:active { height: 10px; }
 }
 
 /* ═══ SEARCH PAGE ═══ */
