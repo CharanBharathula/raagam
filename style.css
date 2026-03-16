@@ -260,9 +260,10 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .progress-container { width: 100%; padding: 0 4px; }
 .progress-bar { width: 100%; height: 5px; background: rgba(255,255,255,0.15); border-radius: 4px; cursor: pointer; position: relative; transition: height 0.15s; touch-action: none; }
 .progress-bar:hover, .progress-bar:active { height: 8px; }
-.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; width: 0; transition: width 0.1s linear; pointer-events: none; }
-.progress-knob { position: absolute; top: 50%; right: 0; width: 20px; height: 20px; background: #fff; border-radius: 50%; transform: translate(50%, -50%) scale(1); transition: transform 0.15s; box-shadow: 0 2px 8px rgba(0,0,0,0.5); pointer-events: none; }
-.progress-bar:hover .progress-knob, .progress-bar.dragging .progress-knob { transform: translate(50%, -50%) scale(1.2); }
+.progress-fill { height: 100%; background: var(--accent); border-radius: 4px; width: 0; transition: width 0.1s linear; pointer-events: none; position: relative; }
+.progress-fill::after { content: ''; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); width: 20px; height: 20px; background: #fff; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.5); transition: width 0.15s, height 0.15s; }
+.progress-bar:hover .progress-fill::after, .progress-bar.dragging .progress-fill::after { width: 24px; height: 24px; right: -12px; }
+.progress-knob { display: none; }
 .progress-times { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
 .controls { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 8px 0 16px; }
 .ctrl-btn { background: none; border: none; color: var(--text); font-size: 28px; padding: 12px; cursor: pointer; transition: transform 0.15s, opacity 0.2s; opacity: 0.9; min-width: 48px; min-height: 48px; display: flex; align-items: center; justify-content: center; }
@@ -272,6 +273,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .shuffle-btn.active { opacity: 1; color: var(--accent); }
 .heart-btn-main { font-size: 26px; }
 .heart-btn-main.liked { color: var(--heart); animation: heartPop 0.3s ease; }
+.heart-btn-main.liked .heart-icon { fill: var(--heart); stroke: var(--heart); }
 @keyframes heartPop { 0%{transform:scale(1)} 50%{transform:scale(1.3)} 100%{transform:scale(1)} }
 .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
 .spinner { width: 24px; height: 24px; border: 3px solid rgba(255,255,255,0.1); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -425,7 +427,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 
 /* Mobile: always show progress knob (no hover needed on touch) */
 @media (hover: none) and (pointer: coarse) {
-  .progress-knob { transform: translate(50%, -50%) scale(1) !important; width: 22px; height: 22px; }
+  .progress-fill::after { width: 22px; height: 22px; right: -11px; }
   .progress-bar { height: 6px; }
   .progress-bar:active { height: 10px; }
 }
