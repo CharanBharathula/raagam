@@ -18,6 +18,17 @@ let authMode = 'login';
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
 let downloadingUrls = new Set(); // Currently downloading URLs
 
+// Song preview (Spotify-like hover) state
+const previewAudio = new Audio();
+let previewSongId = null;
+let previewShowTimeout = null;
+let previewFadeInTimer = null;
+let previewFadeOutTimer = null;
+let previewsInitialized = false;
+const PREVIEW_MAX_VOLUME = 0.38;
+const PREVIEW_FADE_IN_STEP = 0.04;
+const PREVIEW_FADE_OUT_STEP = 0.08;
+
 const LRCLIB_API = 'https://lrclib.net/api/search';
 
 // ═══ AUTH ═══
@@ -145,6 +156,7 @@ function enterApp() {
   renderRecent();
   restoreLastPlayed();
   updateCacheSize();
+  initSongPreviews();
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -683,12 +695,17 @@ function renderRecent() {
     const grid = document.getElementById('recent-grid');
     if (!recent.length) { section.style.display='none'; return; }
     section.style.display='block';
-    grid.innerHTML = recent.slice(0,10).map(s => `
-      <div class="recent-card" onclick="playFromRecent('${escAttr(s.id)}')">
-        <img src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+    grid.innerHTML = recent.slice(0,10).map(s => {
+      const previewData = _buildPreviewAttr(s);
+      return `<div class="recent-card" onclick="playFromRecent('${escAttr(s.id)}')" data-preview-song="${previewData}">
+        <div class="thumb-wrap">
+          <img src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+          <div class="thumb-hover-overlay"><div class="thumb-play-icon">▶</div></div>
+        </div>
         <div class="recent-title">${escHtml(decodeHtml(s.name))}</div>
         <div class="recent-artist">${escHtml(decodeHtml(s.artists||''))}</div>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   } catch(e) {}
 }
 function playFromRecent(id) {
@@ -725,15 +742,17 @@ function renderLibrary() {
   // Offline Songs section
   if (dlSongs.length > 0) {
     html += '<div class="library-section-header"><h3>📥 Downloaded Songs</h3><span class="library-section-count">' + dlSongs.length + '</span></div>';
-    html += dlSongs.map(s => `
-      <div class="library-item">
+    html += dlSongs.map(s => {
+      const previewData = _buildPreviewAttr(s);
+      return `<div class="library-item" data-preview-song="${previewData}">
         <img class="library-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" onclick="playDownloaded('${escAttr(s.id)}')" />
         <div class="library-info" onclick="playDownloaded('${escAttr(s.id)}')">
           <h4>${escHtml(decodeHtml(s.name))}</h4>
           <p>${escHtml(decodeHtml(s.artists||s.album||''))} <span class="dl-badge">Downloaded</span></p>
         </div>
         <button class="lib-remove-btn" onclick="removeDownload('${escAttr(s.id)}')" title="Remove download">✕</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
   }
   
   // Liked Songs section
@@ -744,7 +763,8 @@ function renderLibrary() {
     html += likedLabel;
     html += songs.slice().reverse().map(s => {
       const isDl = isSongDownloaded(s);
-      return `<div class="library-item" onclick="playSongFromLib('${escAttr(s.id)}')">
+      const previewData = _buildPreviewAttr(s);
+      return `<div class="library-item" onclick="playSongFromLib('${escAttr(s.id)}')" data-preview-song="${previewData}">
         <img class="library-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
         <div class="library-info">
           <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
@@ -1068,7 +1088,8 @@ function renderSearchResults(results, query) {
   }
   container.innerHTML = results.map(s => {
     const isDl = isSongDownloaded(s);
-    return `<div class="search-result-item" onclick="playSongFromSearch('${escAttr(s.id)}','${escAttr(s.language||'telugu')}')">
+    const previewData = _buildPreviewAttr(s);
+    return `<div class="search-result-item" onclick="playSongFromSearch('${escAttr(s.id)}','${escAttr(s.language||'telugu')}')" data-preview-song="${previewData}">
       <img class="search-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
       <div class="search-info">
         <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
@@ -1177,6 +1198,151 @@ function renderBollywoodList() {
       <button class="bw-cat-play" onclick="event.stopPropagation(); playBollywoodCategory('${cat.key}')">▶ Play All</button>
     </div>`;
   }).join('');
+}
+
+// ═══ SPOTIFY-LIKE SONG PREVIEW (hover floating card) ═══
+
+/** Serialize a song's preview data into a safe HTML attribute value. */
+function _buildPreviewAttr(s) {
+  return escAttr(JSON.stringify({ id: s.id, name: s.name, artists: s.artists, image: s.image, audio: s.audio }));
+}
+
+function initSongPreviews() {
+  if (previewsInitialized) return;
+  // Only activate on devices with fine pointer (desktop/mouse), not touch screens
+  if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  previewsInitialized = true;
+
+  // Create the shared floating preview card once
+  const card = document.createElement('div');
+  card.id = 'song-preview-card';
+  card.className = 'song-preview-card';
+  card.setAttribute('aria-hidden', 'true');
+  card.innerHTML = `
+    <div class="song-preview-art">
+      <img id="preview-art-img" src="" alt="" />
+      <div class="preview-bars">
+        <div class="preview-bar"></div>
+        <div class="preview-bar"></div>
+        <div class="preview-bar"></div>
+        <div class="preview-bar"></div>
+        <div class="preview-bar"></div>
+      </div>
+    </div>
+    <div class="song-preview-info">
+      <div class="song-preview-name" id="preview-name"></div>
+      <div class="song-preview-artist" id="preview-artist"></div>
+    </div>`;
+  document.body.appendChild(card);
+
+  // Use event delegation on document for efficient hover tracking
+  document.addEventListener('mouseover', _previewOver);
+  document.addEventListener('mouseout', _previewOut);
+}
+
+function _previewOver(e) {
+  const el = e.target.closest('[data-preview-song]');
+  if (!el) return;
+  try {
+    const song = JSON.parse(el.dataset.previewSong);
+    if (previewSongId === song.id) return;
+    clearTimeout(previewShowTimeout);
+    previewShowTimeout = setTimeout(() => _showSongPreview(song, el), 380);
+  } catch(err) {}
+}
+
+function _previewOut(e) {
+  const el = e.target.closest('[data-preview-song]');
+  if (!el) return;
+  // Only hide if mouse actually left the card element
+  if (el.contains(e.relatedTarget)) return;
+  clearTimeout(previewShowTimeout);
+  _hideSongPreview();
+}
+
+function _showSongPreview(song, triggerEl) {
+  const card = document.getElementById('song-preview-card');
+  if (!card) return;
+  previewSongId = song.id;
+
+  // Update content
+  const imgEl = document.getElementById('preview-art-img');
+  document.getElementById('preview-name').textContent = decodeHtml(song.name || '');
+  document.getElementById('preview-artist').textContent = decodeHtml(song.artists || '');
+
+  // Reset Ken Burns animation for a fresh start on each new song
+  imgEl.src = '';
+  imgEl.style.animation = 'none';
+  void imgEl.offsetWidth; // reflow to restart animation
+  imgEl.style.animation = '';
+  imgEl.src = song.image || '';
+
+  // Position the card near the trigger element using actual measured dimensions
+  const rect = triggerEl.getBoundingClientRect();
+  const cardW = card.offsetWidth || 188;
+  const cardH = card.offsetHeight || 218;
+  const gap = 10;
+  let left = rect.left + rect.width / 2 - cardW / 2;
+  let top  = rect.top - cardH - gap;
+  // Flip to below the element if not enough space above
+  if (top < 8) top = rect.bottom + gap;
+  // Clamp within viewport
+  left = Math.max(8, Math.min(left, window.innerWidth  - cardW - 8));
+  top  = Math.max(8, Math.min(top,  window.innerHeight - cardH - 8));
+  card.style.left = left + 'px';
+  card.style.top  = top  + 'px';
+
+  // Trigger the zoom-in appearance animation
+  card.classList.remove('visible');
+  void card.offsetWidth;
+  card.classList.add('visible');
+
+  // Start audio preview at low volume, fade in
+  _startPreviewAudio(song.audio);
+}
+
+function _hideSongPreview() {
+  const card = document.getElementById('song-preview-card');
+  if (card) card.classList.remove('visible');
+  previewSongId = null;
+  _stopPreviewAudio();
+}
+
+function _startPreviewAudio(audioUrl) {
+  if (!audioUrl) return;
+  clearInterval(previewFadeInTimer);
+  clearInterval(previewFadeOutTimer);
+  try {
+    previewAudio.pause();
+    previewAudio.src = audioUrl;
+    previewAudio.currentTime = 0;
+    previewAudio.volume = 0;
+    previewAudio.play().then(() => {
+      previewFadeInTimer = setInterval(() => {
+        if (previewAudio.volume < PREVIEW_MAX_VOLUME) {
+          previewAudio.volume = Math.min(PREVIEW_MAX_VOLUME, previewAudio.volume + PREVIEW_FADE_IN_STEP);
+        } else {
+          clearInterval(previewFadeInTimer);
+        }
+      }, 80);
+    }).catch(() => {});
+  } catch(err) {}
+}
+
+function _stopPreviewAudio() {
+  clearInterval(previewFadeInTimer);
+  clearInterval(previewFadeOutTimer);
+  if (!previewAudio.src) return;
+  let vol = previewAudio.volume;
+  previewFadeOutTimer = setInterval(() => {
+    vol = Math.max(0, vol - PREVIEW_FADE_OUT_STEP);
+    try { previewAudio.volume = vol; } catch(e) {}
+    if (vol <= 0) {
+      clearInterval(previewFadeOutTimer);
+      previewAudio.pause();
+      previewAudio.src = '';
+    }
+  }, 40);
 }
 
 // ═══ INIT ═══
