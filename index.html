@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raagam — Telugu Music Player</title>
-  <link rel="stylesheet" href="style.css?v=1774015651" />
+  <link rel="stylesheet" href="style.css?v=1774028800" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%236c5ce7'/><stop offset='100%' stop-color='%23a29bfe'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M42 30v32a12 12 0 1 1-4-9V36l24-6v28a12 12 0 1 1-4-9V30L42 30z' fill='white' opacity='.95'/></svg>" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#6c5ce7" />
@@ -146,8 +146,18 @@
           <div class="player-top-label">NOW PLAYING</div>
           <button class="icon-btn" id="lyrics-toggle" onclick="toggleLyrics()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h12"/></svg></button>
         </div>
-        <div class="album-art-container" id="album-art">
-          <div class="album-art-placeholder">🎵<br><span style="font-size:0.8rem;opacity:0.7">Tap play to start</span></div>
+        <div class="media-switch hidden" id="media-switch" role="tablist" aria-label="Playback mode">
+          <button class="media-switch-btn active" id="media-audio-btn" onclick="switchToAudioMode()" role="tab" aria-selected="true">Audio</button>
+          <button class="media-switch-btn" id="media-video-btn" onclick="switchToVideoMode()" role="tab" aria-selected="false">Video</button>
+        </div>
+        <div class="media-stage">
+          <div class="album-art-container" id="album-art">
+            <div class="album-art-placeholder">🎵<br><span style="font-size:0.8rem;opacity:0.7">Tap play to start</span></div>
+          </div>
+          <div class="song-video-container hidden" id="song-video-container">
+            <video id="song-video" class="song-video" playsinline preload="metadata" muted loop></video>
+            <div class="video-mode-badge">VIDEO MODE</div>
+          </div>
         </div>
         <div id="lyrics-panel" class="lyrics-panel hidden">
           <div id="lyrics-content" class="lyrics-content">
@@ -175,6 +185,8 @@
           <button class="ctrl-btn play-btn" id="play-btn"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"></path></svg></button>
           <button class="ctrl-btn" id="next-btn"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"></path></svg></button>
           <button class="ctrl-btn heart-btn-main" id="heart-btn"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="heart-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg></button>
+        </div>
+        <div class="player-utility-actions">
           <button class="ctrl-btn download-btn" id="download-btn" title="Download for offline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         </div>
         <div id="loading" class="loading" style="display:none"><div class="spinner"></div></div>
@@ -215,55 +227,9 @@
           <h3>Recently Played</h3>
           <div class="recent-grid" id="recent-grid"></div>
         </div>
-        <div class="home-section" id="clips-section">
-          <h3>🎬 Song Clips</h3>
-          <p class="clips-subtitle">Tap a clip to preview · swipe up/down to explore</p>
-          <div class="clips-row" id="clips-row"></div>
-        </div>
         <div class="home-section">
           <h3>📊 Your Stats</h3>
           <div class="home-stats"><div class="mini-stat"><span class="mini-stat-num" id="stat-songs">0</span> songs available</div></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Clip Overlay (full-screen clip player) -->
-    <div id="clip-overlay" class="clip-overlay hidden" role="dialog" aria-modal="true" aria-label="Song clip player">
-      <div class="clip-overlay-bg" id="clip-overlay-bg"></div>
-      <div class="clip-tap-zone" onclick="toggleClipPlayback()" aria-label="Toggle playback"></div>
-      <div class="clip-visual-wrap">
-        <img class="clip-art" id="clip-art" src="" alt="" />
-        <div class="clip-equalizer" id="clip-equalizer">
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-          <div class="clip-eq-bar"></div>
-        </div>
-        <div class="clip-play-ring" id="clip-play-ring">
-          <div class="clip-play-icon">▶</div>
-        </div>
-      </div>
-      <div class="clip-info-bar">
-        <div class="clip-song-name" id="clip-song-name"></div>
-        <div class="clip-song-artist" id="clip-song-artist"></div>
-        <button class="clip-full-play-btn" id="clip-full-play-btn" onclick="playClipFullSong()">▶ Play Full Song</button>
-      </div>
-      <div class="clip-top-bar">
-        <button class="clip-close-btn" onclick="closeClip()" aria-label="Close clip">✕</button>
-        <div class="clip-title-label">Song Clips</div>
-        <div class="clip-counter" id="clip-counter" aria-live="polite"></div>
-      </div>
-      <div class="clip-nav">
-        <button class="clip-nav-btn" onclick="prevClip()" aria-label="Previous clip">&#8593;</button>
-        <button class="clip-nav-btn" onclick="nextClip()" aria-label="Next clip">&#8595;</button>
-      </div>
-      <div class="clip-progress-wrap">
-        <div class="clip-progress-bar" id="clip-progress-bar">
-          <div class="clip-progress-fill" id="clip-progress-fill"></div>
         </div>
       </div>
     </div>
@@ -420,7 +386,7 @@
   <script src="songs-db.js?v=1773384800"></script>
   <script src="bollywood-songs-db.js?v=1773384800"></script>
   <script src="ai-engine.js?v=1773384800"></script>
-  <script src="app.js?v=1774015651"></script>
+  <script src="app.js?v=1774028800"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>
