@@ -1,69 +1,51 @@
-# 🎵 Raagam — Telugu Music Player
+# 🎵 Raagam — Telugu & Bollywood Music Player
 
-A free, AI-powered Telugu music streaming app with 3,800+ songs spanning 1940–2026.
+A free, AI-powered music streaming app with 71,000+ blockbuster Telugu & Bollywood hits (1980s–present).
 
-## 🌐 Live Demo
+[![Deploy to GitHub Pages](https://github.com/CharanBharathula/raagam/actions/workflows/deploy.yml/badge.svg)](https://github.com/CharanBharathula/raagam/actions/workflows/deploy.yml)
 
-**[▶ Play Now](https://charanbharathula.github.io/raagam/)**
+## 🌐 Live Site
+
+**[▶ Play Now → charanbharathula.github.io/raagam](https://charanbharathula.github.io/raagam/)**
+
+*Automatically deployed to GitHub Pages on every push to `main` — changes go live within ~1–2 minutes of merging.*
 
 ## ✨ Features
 
-- 🎶 **3,800+ Telugu Songs** — from classic golden era to latest hits
+- 🎶 **71,000+ Songs** — Telugu & Bollywood blockbusters from 1980s to today
 - 🤖 **AI Recommendations** — personalized based on your listening habits
-- 📝 **Time-synced Lyrics** — via LRCLib integration
-- ❤️ **Liked Songs & Playlists** — all stored locally in your browser
-- 🎨 **Beautiful UI** — glassmorphism design, responsive on all devices
+- 📝 **Time-synced Lyrics** — via LRCLib integration (karaoke mode)
+- 🖱️ **Spotify-like Hover Preview** — floating preview card with audio snippet on hover (desktop)
+- 🔒 **Lock-Screen Controls** — MediaSession API for iOS/Android media controls
+- ❤️ **Liked Songs & History** — all stored locally in your browser
+- 🎨 **Beautiful UI** — dark theme, glassmorphism design, responsive on all devices
 - 🔍 **Smart Search** — by song, movie, singer, or music director
-- 📊 **Listening Stats** — track your music personality
-
-## 🚀 Getting Started
-
-### Option 1: GitHub Pages (Static)
-Just visit the live demo link above. No server needed — everything runs in your browser.
-
-### Option 2: Self-Hosted with Backend
-If you want user sync across devices:
-
-```bash
-git clone https://github.com/CharanBharathula/raagam.git
-cd raagam
-python3 server.py
-# Open http://localhost:8888
-```
-
-**Requirements:** Python 3.7+
+- 📥 **Offline Download** — cache songs for offline playback
+- 📊 **Music Personality** — track your listening stats
 
 ## 📁 Project Structure
 
 ```
 raagam/
-├── index.html      # Main HTML
-├── app.js          # App logic + auth
-├── ai-engine.js    # AI recommendation engine
-├── songs-db.js     # Song database (3,800+ songs)
-├── style.css       # Styling
-├── server.py       # Optional Python backend (user sync)
-└── serve.py        # Simple static file server
+├── index.html              # Main HTML shell
+├── app.js                  # App logic, player, auth, UI
+├── ai-engine.js            # AI recommendation engine
+├── songs-db.js             # Telugu song database (23,350+ songs)
+├── bollywood-songs-db.js   # Bollywood song database (48,366+ songs)
+├── style.css               # Styling
+├── sw.js                   # Service worker (offline caching, raagam-v4)
+└── .github/workflows/
+    └── deploy.yml          # Auto-deploy to GitHub Pages on push to main
 ```
-
-## 🎯 How It Works
-
-- Songs are streamed via embedded YouTube players
-- AI engine learns your taste from likes, skips, and listening time
-- All user data (likes, history, preferences) stored in browser localStorage
-- No account required — just open and play!
-
-## 📱 Mobile Friendly
-
-Works great on phones and tablets. Add to home screen for an app-like experience.
 
 ## 🛠 Tech Stack
 
-- **Frontend:** Vanilla HTML/CSS/JS (no frameworks!)
+- **Frontend:** Vanilla HTML / CSS / JavaScript — no build step
 - **AI Engine:** Custom collaborative filtering + content-based recommendations
 - **Lyrics:** LRCLib API
-- **Streaming:** YouTube IFrame API
-- **Hosting:** GitHub Pages (free)
+- **Streaming:** JioSaavn CDN audio
+- **Offline:** Service Worker with Cache API
+- **Hosting:** GitHub Pages (auto-deployed via GitHub Actions)
 
 ## 📄 License
 
@@ -71,4 +53,4 @@ MIT — free to use, modify, and share.
 
 ---
 
-Built with ❤️ for Telugu music lovers
+Built with ❤️ for Telugu & Bollywood music lovers
