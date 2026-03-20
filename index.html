@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raagam — Telugu Music Player</title>
-  <link rel="stylesheet" href="style.css?v=1773989100" />
+  <link rel="stylesheet" href="style.css?v=1774015651" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%236c5ce7'/><stop offset='100%' stop-color='%23a29bfe'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M42 30v32a12 12 0 1 1-4-9V36l24-6v28a12 12 0 1 1-4-9V30L42 30z' fill='white' opacity='.95'/></svg>" />
   <link rel="manifest" href="manifest.json" />
   <meta name="theme-color" content="#6c5ce7" />
@@ -215,9 +215,55 @@
           <h3>Recently Played</h3>
           <div class="recent-grid" id="recent-grid"></div>
         </div>
+        <div class="home-section" id="clips-section">
+          <h3>🎬 Song Clips</h3>
+          <p class="clips-subtitle">Tap a clip to preview · swipe up/down to explore</p>
+          <div class="clips-row" id="clips-row"></div>
+        </div>
         <div class="home-section">
           <h3>📊 Your Stats</h3>
           <div class="home-stats"><div class="mini-stat"><span class="mini-stat-num" id="stat-songs">0</span> songs available</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Clip Overlay (full-screen clip player) -->
+    <div id="clip-overlay" class="clip-overlay hidden" role="dialog" aria-modal="true" aria-label="Song clip player">
+      <div class="clip-overlay-bg" id="clip-overlay-bg"></div>
+      <div class="clip-tap-zone" onclick="toggleClipPlayback()" aria-label="Toggle playback"></div>
+      <div class="clip-visual-wrap">
+        <img class="clip-art" id="clip-art" src="" alt="" />
+        <div class="clip-equalizer" id="clip-equalizer">
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+          <div class="clip-eq-bar"></div>
+        </div>
+        <div class="clip-play-ring" id="clip-play-ring">
+          <div class="clip-play-icon">▶</div>
+        </div>
+      </div>
+      <div class="clip-info-bar">
+        <div class="clip-song-name" id="clip-song-name"></div>
+        <div class="clip-song-artist" id="clip-song-artist"></div>
+        <button class="clip-full-play-btn" id="clip-full-play-btn" onclick="playClipFullSong()">▶ Play Full Song</button>
+      </div>
+      <div class="clip-top-bar">
+        <button class="clip-close-btn" onclick="closeClip()" aria-label="Close clip">✕</button>
+        <div class="clip-title-label">Song Clips</div>
+        <div class="clip-counter" id="clip-counter" aria-live="polite"></div>
+      </div>
+      <div class="clip-nav">
+        <button class="clip-nav-btn" onclick="prevClip()" aria-label="Previous clip">&#8593;</button>
+        <button class="clip-nav-btn" onclick="nextClip()" aria-label="Next clip">&#8595;</button>
+      </div>
+      <div class="clip-progress-wrap">
+        <div class="clip-progress-bar" id="clip-progress-bar">
+          <div class="clip-progress-fill" id="clip-progress-fill"></div>
         </div>
       </div>
     </div>
@@ -374,7 +420,7 @@
   <script src="songs-db.js?v=1773384800"></script>
   <script src="bollywood-songs-db.js?v=1773384800"></script>
   <script src="ai-engine.js?v=1773384800"></script>
-  <script src="app.js?v=1773989100"></script>
+  <script src="app.js?v=1774015651"></script>
 <script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
 </body>
 </html>

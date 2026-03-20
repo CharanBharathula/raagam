@@ -634,3 +634,213 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .song-preview-info { padding: 10px 12px 13px; background: linear-gradient(180deg, #1c1c1c 0%, #111 100%); }
 .song-preview-name  { font-size: 13px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.4; }
 .song-preview-artist { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 3px; }
+
+/* ═══ SONG CLIPS ═══ */
+.clips-subtitle { font-size: 12px; color: var(--text-muted); margin: -6px 0 12px; }
+.clips-row {
+  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.clips-row::-webkit-scrollbar { display: none; }
+
+.clip-card {
+  flex: 0 0 120px; width: 120px; border-radius: 14px; overflow: hidden;
+  position: relative; cursor: pointer; background: #1a1a2e;
+  aspect-ratio: 9 / 16; /* phone/reel ratio */
+  box-shadow: 0 4px 16px rgba(0,0,0,.45);
+  transition: transform .2s, box-shadow .2s;
+}
+.clip-card:hover, .clip-card:focus { transform: scale(1.04); box-shadow: 0 8px 24px rgba(108,92,231,.4); outline: none; }
+.clip-card-art {
+  width: 100%; height: 100%; object-fit: cover;
+  display: block; transition: transform 6s ease;
+}
+.clip-card:hover .clip-card-art { transform: scale(1.08); }
+.clip-card-gradient {
+  position: absolute; inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,.1) 50%, transparent 100%);
+}
+.clip-card-info {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  padding: 8px 8px 10px;
+}
+.clip-card-name {
+  font-size: 11px; font-weight: 700; color: #fff;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3;
+}
+.clip-card-artist {
+  font-size: 10px; color: rgba(255,255,255,.7);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px;
+}
+.clip-card-play-badge {
+  position: absolute; top: 8px; left: 8px;
+  background: rgba(108,92,231,.85);
+  color: #fff; font-size: 9px; font-weight: 700; letter-spacing: .5px;
+  padding: 2px 6px; border-radius: 10px;
+}
+.clip-card-eq {
+  position: absolute; bottom: 38px; right: 8px;
+  display: flex; align-items: flex-end; gap: 2px; height: 16px;
+  opacity: 0; transition: opacity .3s;
+}
+.clip-card:hover .clip-card-eq, .clip-card.playing .clip-card-eq { opacity: 1; }
+.clip-card-eq-bar {
+  width: 3px; border-radius: 2px; background: var(--accent);
+  animation: clipCardBarPulse .55s ease-in-out infinite alternate;
+  min-height: 2px;
+}
+.clip-card-eq-bar:nth-child(2) { animation-duration: .8s; animation-delay: .1s; }
+.clip-card-eq-bar:nth-child(3) { animation-duration: .45s; animation-delay: .25s; }
+.clip-card-eq-bar:nth-child(4) { animation-duration: .7s; animation-delay: .05s; }
+@keyframes clipCardBarPulse {
+  0%   { height: 2px; }
+  100% { height: 14px; }
+}
+
+/* ── Full-screen clip overlay ── */
+.clip-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: #000;
+}
+.clip-overlay.hidden { display: none; }
+
+.clip-overlay-bg {
+  position: absolute; inset: 0;
+  background-size: cover; background-position: center;
+  filter: blur(28px) brightness(.35) saturate(1.4);
+  transform: scale(1.1);
+  transition: background-image .4s;
+}
+
+.clip-visual-wrap {
+  position: relative; width: min(320px, 80vw);
+  aspect-ratio: 9 / 16; border-radius: 20px; overflow: hidden;
+  box-shadow: 0 12px 48px rgba(0,0,0,.7);
+  z-index: 1;
+}
+.clip-art {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+  animation: clipArtKenBurns 8s ease-in-out infinite alternate;
+}
+@keyframes clipArtKenBurns {
+  0%   { transform: scale(1)    translateX(0)    translateY(0); }
+  25%  { transform: scale(1.06) translateX(-2%)  translateY(-1%); }
+  50%  { transform: scale(1.1)  translateX(2%)   translateY(1%); }
+  75%  { transform: scale(1.07) translateX(-1%)  translateY(2%); }
+  100% { transform: scale(1.04) translateX(1%)   translateY(-2%); }
+}
+.clip-equalizer {
+  position: absolute; bottom: 72px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: flex-end; gap: 4px; height: 32px;
+}
+.clip-eq-bar {
+  width: 4px; border-radius: 3px;
+  background: linear-gradient(to top, var(--accent), #a29bfe);
+  animation: clipEqPulse .6s ease-in-out infinite alternate;
+  min-height: 3px;
+}
+.clip-eq-bar:nth-child(1) { animation-duration: .52s; }
+.clip-eq-bar:nth-child(2) { animation-duration: .78s; animation-delay: .08s; }
+.clip-eq-bar:nth-child(3) { animation-duration: .44s; animation-delay: .20s; }
+.clip-eq-bar:nth-child(4) { animation-duration: .88s; animation-delay: .04s; }
+.clip-eq-bar:nth-child(5) { animation-duration: .60s; animation-delay: .15s; }
+.clip-eq-bar:nth-child(6) { animation-duration: .70s; animation-delay: .10s; }
+.clip-eq-bar:nth-child(7) { animation-duration: .50s; animation-delay: .22s; }
+.clip-eq-bar:nth-child(8) { animation-duration: .66s; animation-delay: .18s; }
+@keyframes clipEqPulse {
+  0%   { height: 3px; }
+  100% { height: 28px; }
+}
+.clip-overlay.paused .clip-eq-bar { animation-play-state: paused; }
+.clip-overlay.paused .clip-art     { animation-play-state: paused; }
+
+.clip-play-ring {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .25s;
+}
+.clip-overlay.paused .clip-play-ring { opacity: 1; }
+.clip-play-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(108,92,231,.75); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px; color: #fff; padding-left: 4px;
+  box-shadow: 0 4px 20px rgba(108,92,231,.5);
+}
+
+.clip-info-bar {
+  position: absolute; bottom: 24px; left: 0; right: 0;
+  z-index: 2; padding: 0 24px;
+  text-align: center;
+}
+.clip-song-name {
+  font-size: 17px; font-weight: 700; color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,.6);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clip-song-artist {
+  font-size: 13px; color: rgba(255,255,255,.75);
+  margin: 4px 0 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.clip-full-play-btn {
+  background: var(--accent); color: #fff; border: none;
+  padding: 9px 22px; border-radius: 24px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(108,92,231,.5);
+  transition: background .2s, transform .15s;
+}
+.clip-full-play-btn:hover { background: #5a4bd1; transform: scale(1.04); }
+
+.clip-top-bar {
+  position: absolute; top: 0; left: 0; right: 0;
+  z-index: 3; padding: 14px 16px;
+  display: flex; align-items: center; justify-content: space-between;
+  background: linear-gradient(to bottom, rgba(0,0,0,.55), transparent);
+}
+.clip-close-btn {
+  width: 36px; height: 36px; border-radius: 50%;
+  background: rgba(255,255,255,.12); border: none; color: #fff;
+  font-size: 16px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s;
+}
+.clip-close-btn:hover { background: rgba(255,255,255,.22); }
+.clip-title-label { font-size: 14px; font-weight: 600; color: #fff; letter-spacing: .5px; }
+.clip-counter {
+  min-width: 36px; text-align: right;
+  font-size: 12px; font-weight: 600; color: rgba(255,255,255,.7);
+  letter-spacing: .3px;
+}
+
+.clip-nav {
+  position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  z-index: 3; display: flex; flex-direction: column; gap: 12px;
+}
+.clip-nav-btn {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,.12); border: none; color: #fff;
+  font-size: 18px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .2s, transform .15s;
+}
+.clip-nav-btn:hover { background: rgba(108,92,231,.5); transform: scale(1.1); }
+
+.clip-progress-wrap {
+  position: absolute; bottom: 0; left: 0; right: 0; z-index: 3;
+  padding: 0 0 4px;
+}
+.clip-progress-bar {
+  height: 3px; background: rgba(255,255,255,.2);
+  border-radius: 2px; overflow: hidden;
+}
+.clip-progress-fill {
+  height: 100%; width: 0%; background: var(--accent);
+  border-radius: 2px; transition: width .5s linear;
+}
+
+/* tap-to-toggle overlay */
+.clip-tap-zone {
+  position: absolute; inset: 0; z-index: 2; cursor: pointer;
+}

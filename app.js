@@ -29,6 +29,18 @@ const PREVIEW_MAX_VOLUME = 0.38;
 const PREVIEW_FADE_IN_STEP = 0.04;
 const PREVIEW_FADE_OUT_STEP = 0.08;
 
+// Song Clips state
+const clipAudio = new Audio();
+let clipPool = [];           // Array of songs available as clips
+let clipIndex = 0;           // Current position in clipPool
+let clipPlaying = false;     // Whether the clip audio is playing
+let clipProgressTimer = null;
+let clipMainWasPlaying = false; // Track whether main player was playing before clip opened
+const CLIP_POOL_SIZE = 20;          // Max songs to show in the clips row
+const CLIP_DURATION_SEC = 30;       // Each clip plays for this many seconds
+const CLIP_START_OFFSET_SEC = 30;   // Start this many seconds into the track (skip intro)
+const CLIP_END_THRESHOLD_SEC = 0.3; // Seconds before clip end to auto-advance
+
 const LRCLIB_API = 'https://lrclib.net/api/search';
 
 // ═══ AUTH ═══
@@ -157,6 +169,9 @@ function enterApp() {
   restoreLastPlayed();
   updateCacheSize();
   initSongPreviews();
+  // Clips need the DB to be available; if it's already loaded, render now.
+  // If not (first load race), renderClips() is also called from showPage('home').
+  renderClips();
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -725,7 +740,7 @@ function showPage(name) {
   if (npb && currentSong) npb.classList.toggle('hidden', name==='player');
   if (name==='library') renderLibrary();
   if (name==='profile') renderProfile();
-  if (name==='home') { renderRecent(); updateHomeStats(); }
+  if (name==='home') { renderRecent(); updateHomeStats(); renderClips(); }
   if (name==='search') { setTimeout(() => document.getElementById('search-input')?.focus(), 50); }
   if (name==='bollywood') renderBollywoodList();
   if (name==='player') updatePlayerDownloadBtn();
@@ -1051,6 +1066,47 @@ function initSwipe() {
   }, { passive: true });
 }
 
+/**
+ * Wire vertical swipe gestures onto the clip overlay.
+ * Swipe up   → next clip  (mimics TikTok / Instagram Reels / Spotify Clips)
+ * Swipe down → prev clip
+ */
+function initClipSwipe() {
+  const overlay = document.getElementById('clip-overlay');
+  if (!overlay) return;
+
+  let clipSwipeTouchStartY = 0;
+  let clipSwipeTouchStartTime = 0;
+  let clipSwipeSwiping = false;
+
+  overlay.addEventListener('touchstart', e => {
+    // Don't hijack taps on the buttons at top/bottom
+    if (e.target.closest('button')) return;
+    clipSwipeTouchStartY = e.touches[0].clientY;
+    clipSwipeTouchStartTime = Date.now();
+    clipSwipeSwiping = true;
+  }, { passive: true });
+
+  overlay.addEventListener('touchmove', e => {
+    if (!clipSwipeSwiping) return;
+    const dy = e.touches[0].clientY - clipSwipeTouchStartY;
+    // Suppress vertical scroll inside the overlay while swiping
+    if (Math.abs(dy) > 10) e.preventDefault();
+  }, { passive: false });
+
+  overlay.addEventListener('touchend', e => {
+    if (!clipSwipeSwiping) return;
+    clipSwipeSwiping = false;
+    const dy = e.changedTouches[0].clientY - clipSwipeTouchStartY;
+    const elapsed = Date.now() - clipSwipeTouchStartTime;
+    const velocity = Math.abs(dy) / Math.max(elapsed, 1);
+    if (Math.abs(dy) > 60 || velocity > 0.4) {
+      if (dy < 0) nextClip(); // swipe up → next
+      else prevClip();        // swipe down → prev
+    }
+  }, { passive: true });
+}
+
 // ═══ SEARCH ═══
 function getAllSongs() {
   const telugu = (typeof SongsDB !== 'undefined' ? SongsDB.SONGS_DB : []) || [];
@@ -1198,6 +1254,222 @@ function renderBollywoodList() {
       <button class="bw-cat-play" onclick="event.stopPropagation(); playBollywoodCategory('${cat.key}')">▶ Play All</button>
     </div>`;
   }).join('');
+}
+
+// ═══ SONG CLIPS (Spotify-like clip cards + full-screen clip player) ═══
+
+/**
+ * Build the pool of songs to show as clips. We pick a random sample of up to
+ * 20 songs from both databases so every session feels fresh.
+ */
+function _buildClipPool() {
+  const all = getAllSongs();
+  if (!all.length) return [];
+  // Fisher-Yates shuffle for an unbiased random sample
+  const arr = all.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr.slice(0, CLIP_POOL_SIZE);
+}
+
+/** Render the horizontal clips row on the home page. */
+function renderClips() {
+  const row = document.getElementById('clips-row');
+  if (!row) return;
+
+  clipPool = _buildClipPool();
+  if (!clipPool.length) {
+    document.getElementById('clips-section').style.display = 'none';
+    return;
+  }
+  document.getElementById('clips-section').style.display = '';
+
+  row.innerHTML = clipPool.map((s, i) => {
+    return `<div class="clip-card" role="button" tabindex="0"
+        aria-label="Play clip: ${escAttr(decodeHtml(s.name))}"
+        onclick="openClip(${i})"
+        onkeydown="if(event.key==='Enter'||event.key===' ')openClip(${i})">
+      <img class="clip-card-art" src="${escAttr(s.image || '')}" alt="" loading="lazy" onerror="this.style.opacity='.3'" />
+      <div class="clip-card-gradient"></div>
+      <div class="clip-card-play-badge">CLIP</div>
+      <div class="clip-card-eq" aria-hidden="true">
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+      </div>
+      <div class="clip-card-info">
+        <div class="clip-card-name">${escHtml(decodeHtml(s.name))}</div>
+        <div class="clip-card-artist">${escHtml(decodeHtml(s.artists || ''))}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/** Open the full-screen clip overlay and start playing the clip at `idx`. */
+function openClip(idx) {
+  if (!clipPool.length) return;
+  clipIndex = Math.max(0, Math.min(idx, clipPool.length - 1));
+
+  // Pause the main player if it is running so the two don't overlap
+  clipMainWasPlaying = isPlaying;
+  if (isPlaying) {
+    audio.pause();
+    isPlaying = false;
+    document.getElementById('play-btn')?.querySelector('svg path')?.setAttribute('d', 'M8 5v14l11-7z');
+    document.getElementById('npb-play')?.querySelector('svg path')?.setAttribute('d', 'M8 5v14l11-7z');
+  }
+
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('hidden', 'paused');
+  _updateClipCounter();
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Load a specific song into the clip overlay and auto-play the audio. */
+function _loadClip(song) {
+  // Update background blur — use encodeURIComponent to safely embed the URL in CSS
+  const bg = document.getElementById('clip-overlay-bg');
+  bg.style.backgroundImage = `url('${(song.image || '').replace(/'/g, '%27')}')`;
+
+  // Update visual art
+  const artEl = document.getElementById('clip-art');
+  artEl.style.animation = 'none';
+  void artEl.offsetWidth; // force reflow to restart CSS animation
+  artEl.style.animation = '';
+  artEl.src = song.image || '';
+
+  // Update info
+  document.getElementById('clip-song-name').textContent = decodeHtml(song.name || '');
+  document.getElementById('clip-song-artist').textContent = decodeHtml(song.artists || '');
+
+  // Reset progress
+  document.getElementById('clip-progress-fill').style.width = '0%';
+
+  // Start audio
+  _playClipAudio(song.audio);
+}
+
+/** Start (or restart) the clip preview audio. Seeks to CLIP_START_OFFSET_SEC and
+ *  stops after CLIP_DURATION_SEC so each clip feels like a genuine short preview. */
+function _playClipAudio(audioUrl) {
+  clearInterval(clipProgressTimer);
+  try {
+    clipAudio.pause();
+    clipAudio.src = audioUrl || '';
+    clipAudio.volume = 0.7;
+    // Seek once metadata is loaded; falls back to 0 if offset exceeds duration
+    clipAudio.onloadedmetadata = () => {
+      const startAt = Math.min(CLIP_START_OFFSET_SEC, Math.max(0, clipAudio.duration - CLIP_DURATION_SEC - 1));
+      clipAudio.currentTime = startAt;
+    };
+    clipAudio.play().then(() => {
+      clipPlaying = true;
+      document.getElementById('clip-overlay').classList.remove('paused');
+      // Update progress bar every 500 ms
+      clipProgressTimer = setInterval(_updateClipProgress, 500);
+    }).catch(() => {
+      // Auto-play blocked or network error — show paused state gracefully
+      clipPlaying = false;
+      document.getElementById('clip-overlay').classList.add('paused');
+    });
+  } catch (err) {
+    clipPlaying = false;
+    document.getElementById('clip-overlay').classList.add('paused');
+  }
+}
+
+/** Sync the thin progress bar. Progress is relative to the 30-second clip window. */
+function _updateClipProgress() {
+  if (!clipAudio.duration || isNaN(clipAudio.duration)) return;
+  const startAt = Math.min(CLIP_START_OFFSET_SEC, Math.max(0, clipAudio.duration - CLIP_DURATION_SEC - 1));
+  const elapsed = clipAudio.currentTime - startAt;
+  const pct = Math.min(100, Math.max(0, (elapsed / CLIP_DURATION_SEC) * 100));
+  document.getElementById('clip-progress-fill').style.width = pct + '%';
+  // Auto-advance when the 30-second clip window is up
+  if (elapsed >= CLIP_DURATION_SEC - CLIP_END_THRESHOLD_SEC) {
+    nextClip();
+  }
+}
+
+/** Toggle play / pause of the currently loaded clip. */
+function toggleClipPlayback() {
+  const overlay = document.getElementById('clip-overlay');
+  if (clipPlaying) {
+    clipAudio.pause();
+    clipPlaying = false;
+    overlay.classList.add('paused');
+    clearInterval(clipProgressTimer);
+  } else {
+    clipAudio.play().then(() => {
+      clipPlaying = true;
+      overlay.classList.remove('paused');
+      clipProgressTimer = setInterval(_updateClipProgress, 500);
+    }).catch(() => {});
+  }
+}
+
+/** Advance to the next clip (wraps around). */
+function nextClip() {
+  if (!clipPool.length) return;
+  clipIndex = (clipIndex + 1) % clipPool.length;
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('paused');
+  _updateClipCounter();
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Go back to the previous clip (wraps around). */
+function prevClip() {
+  if (!clipPool.length) return;
+  clipIndex = (clipIndex - 1 + clipPool.length) % clipPool.length;
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('paused');
+  _updateClipCounter();
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Update the "N / Total" counter badge in the overlay header. */
+function _updateClipCounter() {
+  const el = document.getElementById('clip-counter');
+  if (el) el.textContent = `${clipIndex + 1} / ${clipPool.length}`;
+}
+
+/** Close the clip overlay, stop the audio, and resume main player if it was running. */
+function closeClip() {
+  clearInterval(clipProgressTimer);
+  clipAudio.pause();
+  clipAudio.src = '';
+  clipPlaying = false;
+  document.getElementById('clip-overlay').classList.add('hidden');
+  // Resume main player if it was playing before the clip was opened
+  if (clipMainWasPlaying && currentSong) {
+    audio.play().then(() => {
+      isPlaying = true;
+      const pauseIcon = 'M6 19h4V5H6v14zm8-14v14h4V5h-4z';
+      document.getElementById('play-btn')?.querySelector('svg path')?.setAttribute('d', pauseIcon);
+      document.getElementById('npb-play')?.querySelector('svg path')?.setAttribute('d', pauseIcon);
+    }).catch(() => {});
+  }
+}
+
+/**
+ * Play the full song that's currently showing in the clip overlay,
+ * close the clip, and navigate to the player page.
+ */
+function playClipFullSong() {
+  const song = clipPool[clipIndex];
+  if (!song) return;
+  // Prevent closeClip() from resuming old song — we're switching to a new one
+  clipMainWasPlaying = false;
+  closeClip();
+  history.push(song);
+  historyIndex = history.length - 1;
+  activeLanguage = song.language === 'hindi' ? 'hindi' : 'telugu';
+  playSong(song);
+  showPage('player');
 }
 
 // ═══ SPOTIFY-LIKE SONG PREVIEW (hover floating card) ═══
@@ -1363,6 +1635,20 @@ document.addEventListener('DOMContentLoaded', () => {
   ['auth-username','auth-password','auth-display'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') submitAuth(); });
   });
+
+  // Close clip overlay with Escape key; arrow keys navigate between clips
+  document.addEventListener('keydown', e => {
+    const overlay = document.getElementById('clip-overlay');
+    const overlayOpen = overlay && !overlay.classList.contains('hidden');
+    if (e.key === 'Escape' && overlayOpen) { closeClip(); return; }
+    if (overlayOpen) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); nextClip(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); prevClip(); }
+    }
+  });
+
+  // Touch-swipe gestures on the clip overlay (up = next, down = prev)
+  initClipSwipe();
 
   initSwipe();
   initSearch();
