@@ -349,7 +349,7 @@ function playByEra(era) {
   if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB) { showToast('Loading...'); return; }
   activeLanguage = 'telugu';
   bollywoodCategoryPool = null;
-  const ranges = { 'classics':[0,1989], '1990s':[1990,1999], '2000s':[2000,2009], '2010s':[2010,2019], '2020s':[2020,2030] };
+  const ranges = { 'classics':[1980,1989], '1990s':[1990,1999], '2000s':[2000,2009], '2010s':[2010,2019], '2020s':[2020,2030] };
   const r = ranges[era];
   if (!r) { playRandomSong(); return; }
   const pool = SongsDB.SONGS_DB.filter(s => { const y = parseInt(s.year); return y >= r[0] && y <= r[1]; });
@@ -1116,7 +1116,7 @@ function playRandomBollywood() {
 
 function playBollywoodByEra(era) {
   if (typeof BollywoodSongsDB === 'undefined') return;
-  const ranges = { '2020s': [2020,2029], '2010s': [2010,2019], '2000s': [2000,2009], '1990s': [1990,1999], 'classics': [1950,1989] };
+  const ranges = { '2020s': [2020,2030], '2010s': [2010,2019], '2000s': [2000,2009], '1990s': [1990,1999], 'classics': [1980,1989] };
   const r = ranges[era];
   if (!r) { playRandomBollywood(); return; }
   const pool = BollywoodSongsDB.SONGS_DB.filter(s => { const y = parseInt(s.year); return y >= r[0] && y <= r[1]; });
@@ -1133,7 +1133,7 @@ const BOLLYWOOD_CATEGORIES = [
   { key: '2010s', emoji: '💫', name: '2010s Hits', desc: 'Arijit Singh era', gradient: 'linear-gradient(135deg, #6c5ce7, #a29bfe)', filter: s => { const y = parseInt(s.year); return y >= 2010 && y <= 2019; } },
   { key: '2000s', emoji: '✨', name: '2000s Hits', desc: 'Golden Bollywood', gradient: 'linear-gradient(135deg, #00b894, #55efc4)', filter: s => { const y = parseInt(s.year); return y >= 2000 && y <= 2009; } },
   { key: '1990s', emoji: '🎭', name: '90s Classics', desc: 'SRK & romance era', gradient: 'linear-gradient(135deg, #e17055, #fab1a0)', filter: s => { const y = parseInt(s.year); return y >= 1990 && y <= 1999; } },
-  { key: 'classics', emoji: '🏛️', name: 'Evergreen Classics', desc: 'Timeless legends', gradient: 'linear-gradient(135deg, #636e72, #b2bec3)', filter: s => parseInt(s.year) < 1990 },
+  { key: 'classics', emoji: '🏛️', name: '80s Blockbusters', desc: 'Golden era hits & blockbusters', gradient: 'linear-gradient(135deg, #636e72, #b2bec3)', filter: s => { const y = parseInt(s.year); return y >= 1980 && y <= 1989; } },
   { key: 'romantic', emoji: '💕', name: 'Romantic', desc: 'Love songs across all eras', gradient: 'linear-gradient(135deg, #fd79a8, #e84393)', filter: s => s.tags && s.tags.includes('romantic') },
   { key: 'party', emoji: '🎉', name: 'Party & Dance', desc: 'Upbeat party tracks', gradient: 'linear-gradient(135deg, #fdcb6e, #e17055)', filter: s => s.tags && s.tags.includes('party') },
   { key: 'sad', emoji: '😢', name: 'Sad & Emotional', desc: 'Heartbreak anthems', gradient: 'linear-gradient(135deg, #74b9ff, #0984e3)', filter: s => s.tags && s.tags.includes('sad') },
