@@ -1,0 +1,49 @@
+# Deploys the Raagam static site to GitHub Pages on every push to main.
+# After merging a PR, the live site at charanbharathula.github.io/raagam
+# will automatically reflect the latest changes within ~1-2 minutes.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main
+  # Allow manual re-deploy from the Actions tab
+  workflow_dispatch:
+
+# Grant the workflow the permissions it needs to publish Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ensure only one deployment runs at a time; cancel the in-progress one
+# when a newer push arrives so the latest code always wins.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # Serve the whole repository root as the static site.
+          # All HTML / CSS / JS / icons are here with no build step needed.
+          path: '.'
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
