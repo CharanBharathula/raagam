@@ -584,10 +584,12 @@ audio.addEventListener('timeupdate', () => {
 audio.addEventListener('pause', () => {
   isPlaying = false; updatePlayBtn();
   document.querySelector('.album-art-container')?.classList.remove('playing');
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused';
 });
 audio.addEventListener('play', () => {
   isPlaying = true; updatePlayBtn();
   document.querySelector('.album-art-container')?.classList.add('playing');
+  if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 });
 
 function fmtTime(s) { if (isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+(sec<10?'0':'')+sec; }
@@ -631,6 +633,11 @@ if ('mediaSession' in navigator) {
   navigator.mediaSession.setActionHandler('pause', () => togglePlay());
   navigator.mediaSession.setActionHandler('previoustrack', () => playPrev());
   navigator.mediaSession.setActionHandler('nexttrack', () => playNext());
+  navigator.mediaSession.setActionHandler('seekto', (details) => {
+    if (details.seekTime !== undefined && !isNaN(audio.duration) && audio.duration > 0) {
+      audio.currentTime = Math.max(0, Math.min(details.seekTime, audio.duration));
+    }
+  });
 }
 
 // ═══ HEART / LIKE ═══
