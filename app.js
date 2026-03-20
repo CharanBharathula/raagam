@@ -29,6 +29,15 @@ const PREVIEW_MAX_VOLUME = 0.38;
 const PREVIEW_FADE_IN_STEP = 0.04;
 const PREVIEW_FADE_OUT_STEP = 0.08;
 
+// Song Clips state
+const clipAudio = new Audio();
+let clipPool = [];       // Array of songs available as clips
+let clipIndex = 0;       // Current position in clipPool
+let clipPlaying = false; // Whether the clip audio is playing
+let clipProgressTimer = null;
+const CLIP_POOL_SIZE = 20;         // Max songs to show in the clips row
+const CLIP_END_THRESHOLD_SEC = 0.3; // Seconds before end to auto-advance
+
 const LRCLIB_API = 'https://lrclib.net/api/search';
 
 // ═══ AUTH ═══
@@ -157,6 +166,9 @@ function enterApp() {
   restoreLastPlayed();
   updateCacheSize();
   initSongPreviews();
+  // Clips need the DB to be available; if it's already loaded, render now.
+  // If not (first load race), renderClips() is also called from showPage('home').
+  renderClips();
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -725,7 +737,7 @@ function showPage(name) {
   if (npb && currentSong) npb.classList.toggle('hidden', name==='player');
   if (name==='library') renderLibrary();
   if (name==='profile') renderProfile();
-  if (name==='home') { renderRecent(); updateHomeStats(); }
+  if (name==='home') { renderRecent(); updateHomeStats(); renderClips(); }
   if (name==='search') { setTimeout(() => document.getElementById('search-input')?.focus(), 50); }
   if (name==='bollywood') renderBollywoodList();
   if (name==='player') updatePlayerDownloadBtn();
@@ -1200,6 +1212,187 @@ function renderBollywoodList() {
   }).join('');
 }
 
+// ═══ SONG CLIPS (Spotify-like clip cards + full-screen clip player) ═══
+
+/**
+ * Build the pool of songs to show as clips. We pick a random sample of up to
+ * 20 songs from both databases so every session feels fresh.
+ */
+function _buildClipPool() {
+  const all = getAllSongs();
+  if (!all.length) return [];
+  // Fisher-Yates shuffle for an unbiased random sample
+  const arr = all.slice();
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+  }
+  return arr.slice(0, CLIP_POOL_SIZE);
+}
+
+/** Render the horizontal clips row on the home page. */
+function renderClips() {
+  const row = document.getElementById('clips-row');
+  if (!row) return;
+
+  clipPool = _buildClipPool();
+  if (!clipPool.length) {
+    document.getElementById('clips-section').style.display = 'none';
+    return;
+  }
+  document.getElementById('clips-section').style.display = '';
+
+  row.innerHTML = clipPool.map((s, i) => {
+    return `<div class="clip-card" role="button" tabindex="0"
+        aria-label="Play clip: ${escAttr(decodeHtml(s.name))}"
+        onclick="openClip(${i})"
+        onkeydown="if(event.key==='Enter'||event.key===' ')openClip(${i})">
+      <img class="clip-card-art" src="${escAttr(s.image || '')}" alt="" loading="lazy" onerror="this.style.opacity='.3'" />
+      <div class="clip-card-gradient"></div>
+      <div class="clip-card-play-badge">CLIP</div>
+      <div class="clip-card-eq" aria-hidden="true">
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+        <div class="clip-card-eq-bar"></div>
+      </div>
+      <div class="clip-card-info">
+        <div class="clip-card-name">${escHtml(decodeHtml(s.name))}</div>
+        <div class="clip-card-artist">${escHtml(decodeHtml(s.artists || ''))}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/** Open the full-screen clip overlay and start playing the clip at `idx`. */
+function openClip(idx) {
+  if (!clipPool.length) return;
+  clipIndex = Math.max(0, Math.min(idx, clipPool.length - 1));
+
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('hidden', 'paused');
+
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Load a specific song into the clip overlay and auto-play the audio. */
+function _loadClip(song) {
+  // Update background blur — use encodeURIComponent to safely embed the URL in CSS
+  const bg = document.getElementById('clip-overlay-bg');
+  bg.style.backgroundImage = `url('${(song.image || '').replace(/'/g, '%27')}')`;
+
+  // Update visual art
+  const artEl = document.getElementById('clip-art');
+  artEl.style.animation = 'none';
+  void artEl.offsetWidth; // force reflow to restart CSS animation
+  artEl.style.animation = '';
+  artEl.src = song.image || '';
+
+  // Update info
+  document.getElementById('clip-song-name').textContent = decodeHtml(song.name || '');
+  document.getElementById('clip-song-artist').textContent = decodeHtml(song.artists || '');
+
+  // Reset progress
+  document.getElementById('clip-progress-fill').style.width = '0%';
+
+  // Start audio
+  _playClipAudio(song.audio);
+}
+
+/** Start (or restart) the clip preview audio. */
+function _playClipAudio(audioUrl) {
+  clearInterval(clipProgressTimer);
+  try {
+    clipAudio.pause();
+    clipAudio.src = audioUrl || '';
+    clipAudio.currentTime = 0;
+    clipAudio.volume = 0.7;
+    clipAudio.play().then(() => {
+      clipPlaying = true;
+      document.getElementById('clip-overlay').classList.remove('paused');
+      // Update progress bar every 500 ms
+      clipProgressTimer = setInterval(_updateClipProgress, 500);
+    }).catch(() => {
+      // Auto-play blocked or network error — show paused state gracefully
+      clipPlaying = false;
+      document.getElementById('clip-overlay').classList.add('paused');
+    });
+  } catch (err) {
+    clipPlaying = false;
+    document.getElementById('clip-overlay').classList.add('paused');
+  }
+}
+
+/** Sync the thin progress bar at the bottom of the clip overlay. */
+function _updateClipProgress() {
+  if (!clipAudio.duration || isNaN(clipAudio.duration)) return;
+  const pct = (clipAudio.currentTime / clipAudio.duration) * 100;
+  document.getElementById('clip-progress-fill').style.width = pct + '%';
+  // Auto-advance when the clip ends
+  if (clipAudio.currentTime >= clipAudio.duration - CLIP_END_THRESHOLD_SEC) {
+    nextClip();
+  }
+}
+
+/** Toggle play / pause of the currently loaded clip. */
+function toggleClipPlayback() {
+  const overlay = document.getElementById('clip-overlay');
+  if (clipPlaying) {
+    clipAudio.pause();
+    clipPlaying = false;
+    overlay.classList.add('paused');
+    clearInterval(clipProgressTimer);
+  } else {
+    clipAudio.play().then(() => {
+      clipPlaying = true;
+      overlay.classList.remove('paused');
+      clipProgressTimer = setInterval(_updateClipProgress, 500);
+    }).catch(() => {});
+  }
+}
+
+/** Advance to the next clip (wraps around). */
+function nextClip() {
+  if (!clipPool.length) return;
+  clipIndex = (clipIndex + 1) % clipPool.length;
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('paused');
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Go back to the previous clip (wraps around). */
+function prevClip() {
+  if (!clipPool.length) return;
+  clipIndex = (clipIndex - 1 + clipPool.length) % clipPool.length;
+  const overlay = document.getElementById('clip-overlay');
+  overlay.classList.remove('paused');
+  _loadClip(clipPool[clipIndex]);
+}
+
+/** Close the clip overlay and stop the audio. */
+function closeClip() {
+  clearInterval(clipProgressTimer);
+  clipAudio.pause();
+  clipAudio.src = '';
+  clipPlaying = false;
+  document.getElementById('clip-overlay').classList.add('hidden');
+}
+
+/**
+ * Play the full song that's currently showing in the clip overlay,
+ * close the clip, and navigate to the player page.
+ */
+function playClipFullSong() {
+  const song = clipPool[clipIndex];
+  if (!song) return;
+  closeClip();
+  history.push(song);
+  historyIndex = history.length - 1;
+  activeLanguage = song.language === 'hindi' ? 'hindi' : 'telugu';
+  playSong(song);
+  showPage('player');
+}
+
 // ═══ SPOTIFY-LIKE SONG PREVIEW (hover floating card) ═══
 
 /** Serialize a song's preview data into a safe HTML attribute value. */
@@ -1362,6 +1555,14 @@ document.addEventListener('DOMContentLoaded', () => {
   
   ['auth-username','auth-password','auth-display'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') submitAuth(); });
+  });
+
+  // Close clip overlay with Escape key
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      const overlay = document.getElementById('clip-overlay');
+      if (overlay && !overlay.classList.contains('hidden')) closeClip();
+    }
   });
 
   initSwipe();
