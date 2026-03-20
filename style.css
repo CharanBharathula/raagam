@@ -808,6 +808,11 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 }
 .clip-close-btn:hover { background: rgba(255,255,255,.22); }
 .clip-title-label { font-size: 14px; font-weight: 600; color: #fff; letter-spacing: .5px; }
+.clip-counter {
+  min-width: 36px; text-align: right;
+  font-size: 12px; font-weight: 600; color: rgba(255,255,255,.7);
+  letter-spacing: .3px;
+}
 
 .clip-nav {
   position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
