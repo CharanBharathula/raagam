@@ -1,4 +1,4 @@
-const CACHE = 'raagam-v6';
+const CACHE = 'raagam-v7';
 const AUDIO_CACHE = 'raagam-audio-v1';
 const PRECACHE = ['/', '/index.html', '/style.css', '/app.js', '/ai-engine.js'];
 // Note: songs-db.js and bollywood-songs-db.js are large; cache on first fetch, not precache
@@ -20,7 +20,7 @@ self.addEventListener('fetch', e => {
 
   // Skip non-GET and external APIs that should always go to network
   if (e.request.method !== 'GET') return;
-  if (url.includes('lrclib.net') || url.includes('youtube') || url.includes('googleapis')) return;
+  if (url.includes('lrclib.net') || url.includes('youtube') || url.includes('googleapis') || url.includes('saavn.dev')) return;
 
   // Audio files — serve from audio cache if available, else network
   if (url.includes('aac.saavncdn.com') || url.includes('.mp4')) {

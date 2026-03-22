@@ -15,7 +15,8 @@ let currentUser = null;
 let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
-const RELEASE_MARKER = '4';
+let currentSongStreamRefreshed = false;
+const RELEASE_MARKER = '5';
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
@@ -76,6 +77,97 @@ function tryNextAudioFallback() {
   audio.play().catch(() => {});
   showToast('Trying alternate stream quality...');
   return true;
+}
+
+function pickBestDownloadUrl(downloadList) {
+  if (!Array.isArray(downloadList) || !downloadList.length) return '';
+
+  const normalized = downloadList
+    .map(item => {
+      if (!item) return null;
+      if (typeof item === 'string') return { link: item, quality: 0 };
+      const link = item.link || item.url || item.src || '';
+      const qualityRaw = String(item.quality || item.bitrate || '').match(/\d+/);
+      return link ? { link, quality: qualityRaw ? parseInt(qualityRaw[0], 10) : 0 } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.quality - a.quality);
+
+  return normalized[0]?.link || '';
+}
+
+function extractFreshUrlFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+
+  const roots = [];
+  if (Array.isArray(payload.data)) roots.push(...payload.data);
+  if (payload.data && typeof payload.data === 'object') roots.push(payload.data);
+  roots.push(payload);
+
+  for (const root of roots) {
+    if (!root || typeof root !== 'object') continue;
+    const directList = root.downloadUrl || root.download_url;
+    const picked = pickBestDownloadUrl(directList);
+    if (picked) return picked;
+
+    const direct = root.media_url || root.audio || root.url || '';
+    if (typeof direct === 'string' && direct.startsWith('http')) return direct;
+  }
+
+  return '';
+}
+
+async function fetchFreshAudioUrl(song) {
+  if (!song?.id) return '';
+
+  const id = encodeURIComponent(song.id);
+  const endpoints = [
+    `https://saavn.dev/api/songs/${id}`,
+    `https://saavn.dev/api/song/${id}`
+  ];
+
+  for (const endpoint of endpoints) {
+    try {
+      const resp = await fetch(endpoint);
+      if (!resp.ok) continue;
+      const payload = await resp.json();
+      const url = extractFreshUrlFromPayload(payload);
+      if (url) return String(url).trim().replace(/^http:\/\//i, 'https://');
+    } catch (e) {
+      // Try next endpoint
+    }
+  }
+
+  return '';
+}
+
+async function tryRefreshCurrentSongStream() {
+  if (!currentSong || currentSongStreamRefreshed) return false;
+
+  currentSongStreamRefreshed = true;
+  showToast('Refreshing stream URL...');
+
+  const freshUrl = await fetchFreshAudioUrl(currentSong);
+  if (!freshUrl) return false;
+
+  currentSong.audio = freshUrl;
+  currentAudioFallbackUrls = getAudioFallbackUrls(freshUrl);
+  currentAudioFallbackIndex = 0;
+
+  try {
+    audio.src = currentAudioFallbackUrls[currentAudioFallbackIndex] || freshUrl;
+    await audio.play();
+    isPlaying = true;
+    isLoadingNext = false;
+    showLoading(false);
+    consecutiveErrors = 0;
+    updatePlayBtn();
+    document.querySelector('.album-art-container')?.classList.add('playing');
+    showToast('Recovered stream. Playing now.');
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 // ═══ AUTH ═══
@@ -593,6 +685,7 @@ function playSong(song) {
     audio.load();
   }
   isLoadingNext = true;
+  currentSongStreamRefreshed = false;
   currentSong = song;
   activeLanguage = (song.language === 'hindi') ? 'hindi' : 'telugu';
   showLoading(true);
@@ -795,10 +888,14 @@ function startLyricsSync() {
 
 // ═══ AUDIO EVENTS ═══
 audio.addEventListener('ended', () => playNext());
-audio.addEventListener('error', () => {
+audio.addEventListener('error', async () => {
   if (tryNextAudioFallback()) {
     isLoadingNext = false;
     showLoading(false);
+    return;
+  }
+
+  if (await tryRefreshCurrentSongStream()) {
     return;
   }
 
