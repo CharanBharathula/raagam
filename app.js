@@ -13,6 +13,8 @@ let activeLanguage = 'telugu';
 let consecutiveErrors = 0;
 let currentUser = null;
 let authMode = 'login';
+let currentAudioFallbackUrls = [];
+let currentAudioFallbackIndex = 0;
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
@@ -38,6 +40,42 @@ const VIDEO_SOURCE_POOL = [
 ];
 
 const LRCLIB_API = 'https://lrclib.net/api/search';
+
+function getAudioFallbackUrls(url) {
+  const clean = String(url || '').trim().replace(/^http:\/\//i, 'https://');
+  if (!clean) return [];
+
+  const match = clean.match(/_(\d+)\.mp4(\?.*)?$/i);
+  if (!match) return [clean];
+
+  const currentQ = parseInt(match[1], 10);
+  const preferred = [320, 160, 96, 48];
+  const nextQualities = [currentQ, ...preferred.filter(q => q !== currentQ)];
+  const suffix = match[2] || '';
+
+  const urls = [];
+  const seen = new Set();
+  for (const q of nextQualities) {
+    const candidate = clean.replace(/_\d+\.mp4(\?.*)?$/i, `_${q}.mp4${suffix}`);
+    if (!seen.has(candidate)) {
+      seen.add(candidate);
+      urls.push(candidate);
+    }
+  }
+  return urls;
+}
+
+function tryNextAudioFallback() {
+  if (!currentSong || !currentAudioFallbackUrls.length) return false;
+  if (currentAudioFallbackIndex >= currentAudioFallbackUrls.length - 1) return false;
+
+  currentAudioFallbackIndex++;
+  const nextUrl = currentAudioFallbackUrls[currentAudioFallbackIndex];
+  audio.src = nextUrl;
+  audio.play().catch(() => {});
+  showToast('Trying alternate stream quality...');
+  return true;
+}
 
 // ═══ AUTH ═══
 function showLanding() {
@@ -583,15 +621,17 @@ function playSong(song) {
     });
   }
 
-  const audioUrl = String(song.audio || '').trim().replace(/^http:\/\//i, 'https://');
-  if (!audioUrl) {
+  const fallbackUrls = getAudioFallbackUrls(song.audio);
+  if (!fallbackUrls.length) {
     showToast('This song has an invalid audio source');
     isLoadingNext = false;
     showLoading(false);
     return;
   }
 
-  audio.src = audioUrl;
+  currentAudioFallbackUrls = fallbackUrls;
+  currentAudioFallbackIndex = 0;
+  audio.src = currentAudioFallbackUrls[currentAudioFallbackIndex];
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
     consecutiveErrors = 0;
@@ -739,6 +779,12 @@ function startLyricsSync() {
 // ═══ AUDIO EVENTS ═══
 audio.addEventListener('ended', () => playNext());
 audio.addEventListener('error', () => {
+  if (tryNextAudioFallback()) {
+    isLoadingNext = false;
+    showLoading(false);
+    return;
+  }
+
   isLoadingNext = false;
   showLoading(false);
   consecutiveErrors++;
