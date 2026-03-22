@@ -33,8 +33,7 @@ const PREVIEW_FADE_OUT_STEP = 0.08;
 let currentMediaMode = 'audio';
 let currentVideoUrl = '';
 const VIDEO_SOURCE_POOL = [
-  'https://samplelib.com/lib/preview/mp4/sample-5s.mp4',
-  'https://samplelib.com/lib/preview/mp4/sample-10s.mp4',
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
   'https://www.w3schools.com/html/mov_bbb.mp4'
 ];
 
@@ -347,12 +346,21 @@ function playRandomSong() {
   if (isLoadingNext) return;
   bollywoodCategoryPool = null;
   activeLanguage = 'telugu'; // Home page random always plays Telugu
-  if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB || !SongsDB.SONGS_DB.length) {
-    showToast('Songs database not loaded yet'); return;
-  }
   const excludeId = currentSong ? currentSong.id : null;
-  const song = SongsDB.getRandomSong(excludeId);
-  if (!song) return;
+  const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
+  let song = null;
+  if (typeof SongsDB !== 'undefined' && typeof SongsDB.getRandomSong === 'function') {
+    song = SongsDB.getRandomSong(excludeId);
+  }
+  if (!song) {
+    song = pickRandomSongFromList(teluguDb, excludeId);
+  }
+  if (!song) {
+    const fallback = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId)
+      || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId);
+    if (!fallback) { showToast('Songs database not loaded yet'); return; }
+    song = fallback;
+  }
   if (currentSong && historyIndex >= 0 && historyIndex < history.length - 1) {
     history = history.slice(0, historyIndex + 1);
   }
@@ -362,8 +370,24 @@ function playRandomSong() {
 }
 
 function getActiveDB() {
-  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') return BollywoodSongsDB.SONGS_DB;
-  return (typeof SongsDB !== 'undefined' ? SongsDB.SONGS_DB : []);
+  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) return BollywoodSongsDB.SONGS_DB;
+  return (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB) ? SongsDB.SONGS_DB : []);
+}
+
+function pickRandomSongFromList(list, excludeId) {
+  if (!Array.isArray(list) || !list.length) return null;
+  const pool = excludeId ? list.filter(s => s && s.id !== excludeId) : list;
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)] || null;
+}
+
+function getRecentSongsSafe() {
+  try {
+    const recent = JSON.parse(localStorage.getItem('raagam_recent') || '[]');
+    return Array.isArray(recent) ? recent : [];
+  } catch (e) {
+    return [];
+  }
 }
 
 function stableHash(str) {
@@ -379,7 +403,7 @@ function getSongVideoUrl(song) {
   if (song.video) return song.video;
   const h = stableHash(song.id || `${song.name || ''}${song.artists || ''}`);
   // Only some songs get video mode so the UI shows two options conditionally.
-  if (h % 4 !== 0) return '';
+  if (h % 2 !== 0) return '';
   return VIDEO_SOURCE_POOL[h % VIDEO_SOURCE_POOL.length];
 }
 
@@ -453,11 +477,8 @@ function setupSongMedia(song) {
   video.src = currentVideoUrl;
   video.onloadedmetadata = () => syncSongVideoTime();
   video.onerror = () => {
-    currentVideoUrl = '';
-    switchEl?.classList.add('hidden');
-    video.removeAttribute('src');
-    video.load();
     switchToAudioMode();
+    showToast('Video failed to load for this song');
   };
 }
 
@@ -1270,8 +1291,19 @@ function initSearch() {
 let bollywoodCategoryPool = null;
 
 function playRandomBollywood() {
-  if (typeof BollywoodSongsDB === 'undefined' || !BollywoodSongsDB.SONGS_DB?.length) return;
-  const song = BollywoodSongsDB.getRandomSong(currentSong?.id);
+  const excludeId = currentSong ? currentSong.id : null;
+  const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
+  let song = null;
+  if (typeof BollywoodSongsDB !== 'undefined' && typeof BollywoodSongsDB.getRandomSong === 'function') {
+    song = BollywoodSongsDB.getRandomSong(excludeId);
+  }
+  if (!song) {
+    song = pickRandomSongFromList(hindiDb, excludeId);
+  }
+  if (!song) {
+    song = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId)
+      || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId);
+  }
   if (song) { history.push(song); historyIndex = history.length - 1; playSong(song); }
 }
 
