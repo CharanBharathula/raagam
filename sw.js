@@ -1,4 +1,4 @@
-const CACHE = 'raagam-v4';
+const CACHE = 'raagam-v5';
 const AUDIO_CACHE = 'raagam-audio-v1';
 const PRECACHE = ['/', '/index.html', '/style.css', '/app.js', '/ai-engine.js'];
 // Note: songs-db.js and bollywood-songs-db.js are large; cache on first fetch, not precache
@@ -51,19 +51,22 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // App shell — cache-first, update on network
+  // App shell — network-first so deployed fixes are picked up quickly
   e.respondWith(
-    caches.match(e.request).then(r => r || fetch(e.request).then(resp => {
-      if (resp.ok) {
+    fetch(e.request).then(resp => {
+      if (resp && resp.ok) {
         const clone = resp.clone();
         caches.open(CACHE).then(c => c.put(e.request, clone));
       }
       return resp;
     }).catch(() => {
-      // Offline fallback for navigation
-      if (e.request.mode === 'navigate') return caches.match('/index.html');
-      return new Response('', { status: 503 });
-    }))
+      // Offline fallback for navigation and cached app assets
+      return caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        if (e.request.mode === 'navigate') return caches.match('/index.html');
+        return new Response('', { status: 503 });
+      });
+    })
   );
 });
 
