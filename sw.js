@@ -1,4 +1,4 @@
-const CACHE = 'raagam-v13';
+const CACHE = 'raagam-v14';
 const AUDIO_CACHE = 'raagam-audio-v1';
 const PRECACHE = ['/', '/index.html', '/style.css', '/app.js', '/ai-engine.js'];
 // Note: songs-db.js and bollywood-songs-db.js are large; cache on first fetch, not precache
@@ -22,18 +22,8 @@ self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (url.includes('lrclib.net') || url.includes('youtube') || url.includes('googleapis') || url.includes('saavn.dev')) return;
 
-  // Audio files — serve from audio cache if available, else network
-  if (url.includes('aac.saavncdn.com') || url.includes('.mp4')) {
-    e.respondWith(
-      caches.open(AUDIO_CACHE).then(cache =>
-        cache.match(e.request).then(cached => {
-          if (cached) return cached;
-          return fetch(e.request).catch(() => new Response('', { status: 503 }));
-        })
-      )
-    );
-    return;
-  }
+  // Let browser handle external media streaming directly (range requests can fail through SW cache logic)
+  if (url.includes('aac.saavncdn.com') || /\.mp4(\?|$)/i.test(url)) return;
 
   // Image files from CDN — cache-first with network fallback
   if (url.includes('c.saavncdn.com')) {
