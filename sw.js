@@ -13,6 +13,8 @@ self.addEventListener('activate', e => {
     Promise.all(keys.filter(k => k !== CACHE && k !== AUDIO_CACHE).map(k => caches.delete(k)))
   ));
   self.clients.claim();
+  // This app now avoids SW caching for playback reliability; remove legacy workers.
+  self.registration.unregister().catch(() => {});
 });
 
 self.addEventListener('fetch', e => {
