@@ -198,7 +198,7 @@
       <div class="page-scroll">
         <div class="home-header">
           <div class="home-greeting" id="home-greeting">Good evening</div>
-          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">3</span></div>
+          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">6</span></div>
         </div>
         <div class="home-section">
           <div class="home-search-shortcut" onclick="showPage('search')">
@@ -386,7 +386,11 @@
   <script src="songs-db.js?v=1773384800"></script>
   <script src="bollywood-songs-db.js?v=1773384800"></script>
   <script src="ai-engine.js?v=1773384800"></script>
-  <script src="app.js?v=1774187000"></script>
-<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=7');</script>
+  <script src="app.js?v=1774188800"></script>
+<script>
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js?v=8');
+const markerEl = document.getElementById('release-marker');
+if (markerEl) markerEl.textContent = '6';
+</script>
 </body>
 </html>

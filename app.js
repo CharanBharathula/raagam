@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '5';
+const RELEASE_MARKER = '6';
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
