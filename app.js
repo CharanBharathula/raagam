@@ -410,8 +410,15 @@ function getSongVideoUrl(song) {
 function syncSongVideoTime() {
   const video = document.getElementById('song-video');
   if (!video || !video.src || currentMediaMode !== 'video' || !audio.duration) return;
-  if (Math.abs(video.currentTime - audio.currentTime) > 0.35) {
-    try { video.currentTime = audio.currentTime; } catch (e) {}
+  
+  // Sync video and audio playback times
+  const timeDiff = Math.abs(video.currentTime - audio.currentTime);
+  if (timeDiff > 0.35) {
+    try {
+      video.currentTime = audio.currentTime;
+    } catch (e) {
+      console.warn('Video sync failed:', e);
+    }
   }
 }
 
@@ -449,8 +456,14 @@ function switchToVideoMode() {
   art?.classList.add('hidden');
   videoWrap?.classList.remove('hidden');
   if (video) {
+    video.muted = true; // Ensure muted
     syncSongVideoTime();
-    if (!audio.paused) video.play().catch(() => {});
+    if (!audio.paused) {
+      video.play().catch(() => {
+        console.warn('Video play failed, staying in audio mode');
+        switchToAudioMode();
+      });
+    }
   }
 }
 
@@ -464,6 +477,11 @@ function setupSongMedia(song) {
   switchToAudioMode();
 
   if (!video) return;
+  
+  // Reset video element before setting new src
+  video.pause();
+  video.currentTime = 0;
+  
   if (!currentVideoUrl) {
     switchEl?.classList.add('hidden');
     videoBtn?.classList.add('hidden');
@@ -475,7 +493,13 @@ function setupSongMedia(song) {
   switchEl?.classList.remove('hidden');
   videoBtn?.classList.remove('hidden');
   video.src = currentVideoUrl;
-  video.onloadedmetadata = () => syncSongVideoTime();
+  video.muted = true; // Ensure only audio plays, not video audio
+  video.onloadedmetadata = () => {
+    // Video ready — sync time with audio
+    if (audio.currentTime > 0) {
+      try { video.currentTime = audio.currentTime; } catch (e) {}
+    }
+  };
   video.onerror = () => {
     switchToAudioMode();
     showToast('Video failed to load for this song');
@@ -737,6 +761,23 @@ audio.addEventListener('play', () => {
   }
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 });
+
+// Video element event listeners for sync
+const video = document.getElementById('song-video');
+if (video) {
+  video.addEventListener('timeupdate', () => {
+    // Catch video drift and resync
+    if (currentMediaMode === 'video' && Math.abs(video.currentTime - audio.currentTime) > 0.5) {
+      try { video.currentTime = audio.currentTime; } catch (e) {}
+    }
+  });
+  video.addEventListener('play', () => {
+    // Ensure audio stays in sync
+    if (!audio.paused && Math.abs(video.currentTime - audio.currentTime) > 0.2) {
+      try { video.currentTime = audio.currentTime; } catch (e) {}
+    }
+  });
+}
 
 function fmtTime(s) { if (isNaN(s)) return '0:00'; const m=Math.floor(s/60), sec=Math.floor(s%60); return m+':'+(sec<10?'0':'')+sec; }
 
