@@ -477,11 +477,15 @@ function setupSongMedia(song) {
   switchToAudioMode();
 
   if (!video) return;
-  
+
   // Reset video element before setting new src
-  video.pause();
-  video.currentTime = 0;
-  
+  try {
+    video.pause();
+    video.currentTime = 0;
+  } catch (e) {
+    console.warn('Video reset failed:', e);
+  }
+
   if (!currentVideoUrl) {
     switchEl?.classList.add('hidden');
     videoBtn?.classList.add('hidden');
@@ -521,6 +525,13 @@ function playByEra(era) {
 }
 
 function playSong(song) {
+  if (!song || !song.audio) {
+    showToast('This song has no playable audio source');
+    isLoadingNext = false;
+    showLoading(false);
+    return;
+  }
+
   if (isLoadingNext && currentSong?.id !== song.id) {
     audio.pause();
     audio.removeAttribute('src');
@@ -572,7 +583,15 @@ function playSong(song) {
     });
   }
 
-  audio.src = song.audio;
+  const audioUrl = String(song.audio || '').trim().replace(/^http:\/\//i, 'https://');
+  if (!audioUrl) {
+    showToast('This song has an invalid audio source');
+    isLoadingNext = false;
+    showLoading(false);
+    return;
+  }
+
+  audio.src = audioUrl;
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
     consecutiveErrors = 0;
