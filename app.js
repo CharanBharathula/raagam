@@ -15,6 +15,7 @@ let currentUser = null;
 let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
+const RELEASE_MARKER = '3';
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
@@ -188,6 +189,9 @@ function enterApp() {
   document.getElementById('auth-page').classList.add('hidden');
   document.getElementById('app-container').classList.remove('hidden');
   document.getElementById('auth-submit').disabled = false;
+
+  const releaseMarkerEl = document.getElementById('release-marker');
+  if (releaseMarkerEl) releaseMarkerEl.textContent = RELEASE_MARKER;
   
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
   document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">💾 Local</span>`;

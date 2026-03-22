@@ -330,6 +330,19 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .home-header { text-align: center; padding: 24px 0 16px; }
 .home-greeting { font-size: 14px; color: var(--text-muted); margin-bottom: 4px; }
 .home-logo { font-size: 28px; font-weight: 700; background: linear-gradient(135deg, var(--accent), #f0c674); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: 3px; }
+.release-marker {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #111;
+  background: #f0c674;
+  -webkit-text-fill-color: #111;
+}
 .home-section { margin-bottom: 28px; }
 .home-section h3 { font-size: 16px; font-weight: 600; margin-bottom: 12px; }
 .chip-row { display: flex; gap: 8px; flex-wrap: wrap; }
