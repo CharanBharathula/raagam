@@ -16,7 +16,18 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '8';
+const RELEASE_MARKER = '9';
+const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
+let hasShownCodecWarning = false;
+
+function supportsAacMp4() {
+  try {
+    const probe = document.createElement('audio');
+    return !!probe.canPlayType && probe.canPlayType(AAC_CODEC) !== '';
+  } catch (e) {
+    return true;
+  }
+}
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
@@ -123,7 +134,9 @@ async function fetchFreshAudioUrl(song) {
   const id = encodeURIComponent(song.id);
   const endpoints = [
     `https://saavn.dev/api/songs/${id}`,
-    `https://saavn.dev/api/song/${id}`
+    `https://saavn.dev/api/song/${id}`,
+    `https://saavn.dev/api/songs?id=${id}`,
+    `https://saavn.dev/api/songs?ids=${id}`
   ];
 
   for (const endpoint of endpoints) {
@@ -297,6 +310,10 @@ function enterApp() {
   document.getElementById('auth-submit').disabled = false;
 
   ensureReleaseMarker();
+  if (!supportsAacMp4() && !hasShownCodecWarning) {
+    hasShownCodecWarning = true;
+    showToast('This browser cannot decode AAC streams. Open Raagam in Chrome or Edge.');
+  }
   
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
   document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">💾 Local</span>`;
@@ -741,6 +758,16 @@ function playSong(song) {
 
   currentAudioFallbackUrls = fallbackUrls;
   currentAudioFallbackIndex = 0;
+
+  if (!supportsAacMp4()) {
+    showToast('Playback blocked: this browser lacks AAC codec support. Use Chrome or Edge.');
+    isLoadingNext = false;
+    showLoading(false);
+    isPlaying = false;
+    updatePlayBtn();
+    return;
+  }
+
   audio.src = currentAudioFallbackUrls[currentAudioFallbackIndex];
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
@@ -889,6 +916,33 @@ function startLyricsSync() {
 // ═══ AUDIO EVENTS ═══
 audio.addEventListener('ended', () => playNext());
 audio.addEventListener('error', async () => {
+  const mediaErr = audio.error;
+  const errorCode = mediaErr?.code || 0;
+  const src = audio.currentSrc || audio.src || '';
+  const errorLabels = {
+    1: 'aborted',
+    2: 'network',
+    3: 'decode',
+    4: 'src_not_supported'
+  };
+  const label = errorLabels[errorCode] || 'unknown';
+  console.error('Audio playback error', {
+    code: errorCode,
+    label,
+    src,
+    networkState: audio.networkState,
+    readyState: audio.readyState
+  });
+
+  if (errorCode === 4 && !supportsAacMp4()) {
+    isLoadingNext = false;
+    showLoading(false);
+    isPlaying = false;
+    updatePlayBtn();
+    showToast('Codec unsupported in this browser (AAC/MP4). Please use Chrome or Edge.');
+    return;
+  }
+
   if (tryNextAudioFallback()) {
     isLoadingNext = false;
     showLoading(false);
