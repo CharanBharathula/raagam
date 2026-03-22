@@ -1,4 +1,4 @@
-const CACHE = 'raagam-v5';
+const CACHE = 'raagam-v6';
 const AUDIO_CACHE = 'raagam-audio-v1';
 const PRECACHE = ['/', '/index.html', '/style.css', '/app.js', '/ai-engine.js'];
 // Note: songs-db.js and bollywood-songs-db.js are large; cache on first fetch, not precache

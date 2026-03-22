@@ -15,7 +15,7 @@ let currentUser = null;
 let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
-const RELEASE_MARKER = '3';
+const RELEASE_MARKER = '4';
 
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
@@ -184,14 +184,27 @@ function signOut() {
   document.getElementById('landing').classList.remove('hidden');
 }
 
+function ensureReleaseMarker() {
+  const homeLogo = document.querySelector('#page-home .home-logo');
+  if (!homeLogo) return;
+
+  let marker = homeLogo.querySelector('.release-marker');
+  if (!marker) {
+    marker = document.createElement('span');
+    marker.className = 'release-marker';
+    homeLogo.appendChild(document.createTextNode(' '));
+    homeLogo.appendChild(marker);
+  }
+  marker.textContent = RELEASE_MARKER;
+}
+
 function enterApp() {
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('auth-page').classList.add('hidden');
   document.getElementById('app-container').classList.remove('hidden');
   document.getElementById('auth-submit').disabled = false;
 
-  const releaseMarkerEl = document.getElementById('release-marker');
-  if (releaseMarkerEl) releaseMarkerEl.textContent = RELEASE_MARKER;
+  ensureReleaseMarker();
   
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
   document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">💾 Local</span>`;
