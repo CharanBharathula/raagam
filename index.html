@@ -198,7 +198,7 @@
       <div class="page-scroll">
         <div class="home-header">
           <div class="home-greeting" id="home-greeting">Good evening</div>
-          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">10</span></div>
+          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">11</span></div>
         </div>
         <div class="home-section">
           <div class="home-search-shortcut" onclick="showPage('search')">
@@ -386,9 +386,9 @@
   <script src="songs-db.js?v=1773384800"></script>
   <script src="bollywood-songs-db.js?v=1773384800"></script>
   <script src="ai-engine.js?v=1773384800"></script>
-  <script src="app.js?v=1774197600"></script>
+  <script src="app.js?v=1774202400"></script>
 <script>
-const RELEASE_VERSION = '10';
+const RELEASE_VERSION = '11';
 const currentUrl = new URL(window.location.href);
 function enforceReleaseMarker() {
   const markerEl = document.getElementById('release-marker');
@@ -405,9 +405,31 @@ if (currentUrl.searchParams.get('v') !== RELEASE_VERSION) {
   window.history.replaceState({}, '', currentUrl.toString());
 }
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register(`sw.js?v=${RELEASE_VERSION}`);
-}
+(async () => {
+  try {
+    const previousRelease = localStorage.getItem('raagam_release_seen');
+    if (previousRelease !== RELEASE_VERSION) {
+      localStorage.setItem('raagam_release_seen', RELEASE_VERSION);
+
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map(reg => reg.unregister().catch(() => false)));
+      }
+
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        const raagamKeys = keys.filter(k => k.startsWith('raagam-'));
+        await Promise.all(raagamKeys.map(k => caches.delete(k)));
+      }
+    }
+  } catch (e) {
+    console.warn('Release cache reset failed:', e);
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register(`sw.js?v=${RELEASE_VERSION}`);
+  }
+})();
 </script>
 </body>
 </html>
