@@ -699,7 +699,7 @@ function _ytPostMessage(func, args) {
 function _prewarmYouTubeIframe(videoId) {
   const ytFrame = document.getElementById('yt-iframe');
   if (!ytFrame || !videoId) return;
-  const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  const newSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
   if (ytFrame.src === newSrc) { ytPrewarmed = true; return; }
   ytFrame.src = newSrc;
   ytPrewarmed = true;
@@ -713,7 +713,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   const badge      = document.getElementById('video-mode-badge');
   if (!ytFrame) return;
 
-  const expectedSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  const expectedSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
   const isPrewarmed = ytPrewarmed && ytFrame.src === expectedSrc;
 
   audio.pause(); // pause JioSaavn — YouTube plays with its own audio
@@ -733,7 +733,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   } else {
     // COLD PATH: not yet pre-warmed — load with autoplay
     const start = (startSeconds > 0) ? `&start=${Math.floor(startSeconds)}` : '';
-    ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${start}`;
+    ytFrame.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${start}`;
     ytFrame.classList.remove('hidden');
     visualizer?.classList.add('hidden');
     video?.classList.add('hidden');
@@ -744,7 +744,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 
 async function _fetchFromPiped(instance, query) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS);
+  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for Piped
   try {
     const res = await fetch(
       `https://${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
@@ -762,7 +762,7 @@ async function _fetchFromPiped(instance, query) {
 
 async function _fetchFromInvidious(instance, query) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS);
+  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for Invidious
   try {
     const res = await fetch(
       `https://${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
@@ -781,7 +781,7 @@ async function _fetchFromCORSProxy(query) {
   const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(ytUrl)}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
+  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for scraper
   try {
     const res = await fetch(proxyUrl, { signal: ctrl.signal });
     clearTimeout(t);
@@ -794,6 +794,9 @@ async function _fetchFromCORSProxy(query) {
 }
 
 async function fetchYouTubeVideoId(song) {
+  // Check if the videoId is already cached for this song
+  const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+  if (cache[song?.id]) { return Promise.resolve(cache[song.id]); }
   if (!song?.id) return null;
   const cached = videoSearchCache[song.id];
   if (cached?.searched) return cached.videoId;
@@ -818,6 +821,12 @@ async function fetchYouTubeVideoId(song) {
       const videoId = await Promise.any(allFetches);
       if (videoId) {
         videoSearchCache[song.id] = { videoId, searched: true };
+        // Save to persistent cache
+        try {
+          const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+          cache[song.id] = videoId;
+          localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
+        } catch (e) {}
         return videoId;
       }
     } catch { /* all instances failed, try next query */ }
@@ -883,9 +892,25 @@ function setupSongMedia(song) {
     video.load();
   }
 
+  // Prefetch video IDs for next 2 songs
+  if (window.history && historyIndex < history.length - 1) {
+    const nextSong = history[historyIndex + 1];
+    if (nextSong) fetchYouTubeVideoId(nextSong).catch(() => {});
+  }
+  // Also prefetch from current playlist/context if possible
+  const db = getActiveDB();
+  const currentIdx = db.findIndex(s => s.id === song.id);
+  if (currentIdx !== -1 && currentIdx < db.length - 2) {
+     fetchYouTubeVideoId(db[currentIdx + 2]).catch(() => {});
+  }
+
   // Background Piped API search — non-blocking, upgrades CANVAS → YOUTUBE when found
   const songIdAtSearch = song.id;
   fetchYouTubeVideoId(song).then(videoId => {
+  // First enhancement: Cache the result persistently for future loads
+  const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+  cache[song.id] = videoId;
+  localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return;
     if (videoId) {
