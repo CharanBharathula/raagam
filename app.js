@@ -58,6 +58,7 @@ let currentMediaMode = 'audio';
 let currentVideoUrl = '';
 let currentVideoContent = 'visualizer'; // 'visualizer' | 'video' | 'youtube'
 let ytPrewarmed = false; // true when yt-iframe is silently pre-buffering with mute=1
+let pendingVideoSearch = null; // Promise for the current song's video ID search
 
 const PIPED_INSTANCES = [
   'pipedapi.kavin.rocks',
@@ -758,10 +759,12 @@ function switchToVideoMode() {
       });
     }
   } else if (currentVideoContent === 'youtube') {
-    // YouTube iframe — videoId is in cache
+    // YouTube iframe — videoId is already known
     const cached = videoSearchCache[currentSong?.id];
-    if (cached?.videoId) {
-      _activateYouTubeIframe(cached.videoId, audio.currentTime);
+    const cachedLocal = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+    const videoId = cached?.videoId || cachedLocal[currentSong?.id];
+    if (videoId) {
+      _activateYouTubeIframe(videoId, audio.currentTime);
     } else {
       currentVideoContent = 'visualizer';
       video?.classList.add('hidden');
@@ -770,14 +773,28 @@ function switchToVideoMode() {
       if (badge) badge.textContent = 'CANVAS';
     }
   } else {
-    // Canvas visualizer — search may still be in progress
+    // Search still in progress — await it instead of just showing "SEARCHING..."
     video?.classList.add('hidden');
     ytFrame?.classList.add('hidden');
     visualizer?.classList.remove('hidden');
-    // Show a searching indicator if Piped/Invidious fetch is still running
-    const searchState = videoSearchCache[currentSong?.id];
-    if (searchState && !searchState.searched) {
-      if (badge) badge.textContent = 'SEARCHING...';
+    if (badge) badge.textContent = 'SEARCHING...';
+
+    // If there's a pending search, wait for it and activate immediately
+    if (pendingVideoSearch) {
+      const songIdAtSwitch = currentSong?.id;
+      pendingVideoSearch.then(videoId => {
+        // Only activate if user is still on the same song and still in video mode
+        if (!currentSong || currentSong.id !== songIdAtSwitch) return;
+        if (currentMediaMode !== 'video') return;
+        if (videoId) {
+          currentVideoContent = 'youtube';
+          _activateYouTubeIframe(videoId, audio.currentTime);
+        } else if (badge) {
+          badge.textContent = 'CANVAS';
+        }
+      }).catch(() => {
+        if (badge) badge.textContent = 'CANVAS';
+      });
     }
   }
 }
@@ -836,6 +853,34 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   }
 }
 
+async function _fetchFromInnerTube(query) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        context: { client: { clientName: 'WEB', clientVersion: '2.20240101' } },
+        query: query
+      })
+    });
+    clearTimeout(t);
+    if (!res.ok) throw new Error('bad');
+    const data = await res.json();
+    const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    for (const section of contents) {
+      const items = section?.itemSectionRenderer?.contents || [];
+      for (const item of items) {
+        const videoId = item?.videoRenderer?.videoId;
+        if (videoId && videoId.length === 11) return videoId;
+      }
+    }
+    throw new Error('not found');
+  } catch (e) { clearTimeout(t); throw e; }
+}
+
 async function _fetchFromYouTubeAPI(query) {
   if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=1&key=${YOUTUBE_API_KEY}`;
@@ -844,7 +889,16 @@ async function _fetchFromYouTubeAPI(query) {
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
-    if (res.status === 403) { youtubeApiQuotaExhausted = true; throw new Error('quota'); }
+    if (res.status === 403) {
+      // Only mark quota exhausted for actual quota errors, not API-not-enabled
+      const data = await res.json().catch(() => ({}));
+      const reason = data?.error?.errors?.[0]?.reason || '';
+      if (reason === 'quotaExceeded' || reason === 'rateLimitExceeded') {
+        youtubeApiQuotaExhausted = true;
+      }
+      throw new Error('api-error');
+    }
+    if (res.status === 429) { youtubeApiQuotaExhausted = true; throw new Error('quota'); }
     if (!res.ok) throw new Error('bad');
     const data = await res.json();
     const videoId = data.items?.[0]?.id?.videoId;
@@ -944,7 +998,17 @@ async function fetchYouTubeVideoId(song) {
   ];
 
   for (const query of queries) {
-    // Try YouTube Data API first (most reliable)
+    // Try InnerTube first (no key needed, most reliable)
+    try {
+      const videoId = await _fetchFromInnerTube(query);
+      if (videoId) {
+        videoSearchCache[song.id] = { videoId, searched: true };
+        _cacheVideoId(song.id, videoId);
+        return videoId;
+      }
+    } catch { /* InnerTube failed — try YouTube Data API */ }
+
+    // Try YouTube Data API (needs key, has quota)
     try {
       const videoId = await _fetchFromYouTubeAPI(query);
       if (videoId) {
@@ -1061,7 +1125,8 @@ function setupSongMedia(song) {
 
   // Background search (always runs, upgrades CANVAS → YOUTUBE when found)
   const songIdAtSearch = song.id;
-  fetchYouTubeVideoId(song).then(videoId => {
+  pendingVideoSearch = fetchYouTubeVideoId(song);
+  pendingVideoSearch.then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
 
