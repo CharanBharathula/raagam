@@ -710,6 +710,8 @@ function switchToAudioMode() {
   art?.classList.remove('hidden');
   videoWrap?.classList.add('hidden');
   if (video) video.pause();
+  const pauseBtn = document.getElementById('yt-pause-btn');
+  if (pauseBtn) pauseBtn.classList.add('hidden');
   if (ytFrame) {
     if (ytPrewarmed) {
       // Keep iframe buffered — mute, pause, hide (src preserved for instant re-entry)
@@ -799,6 +801,20 @@ function switchToVideoMode() {
   }
 }
 
+let ytPaused = false;
+function toggleYouTubePause() {
+  const btn = document.getElementById('yt-pause-btn');
+  if (ytPaused) {
+    _ytPostMessage('playVideo', []);
+    if (btn) btn.textContent = '❚❚';
+    ytPaused = false;
+  } else {
+    _ytPostMessage('pauseVideo', []);
+    if (btn) btn.textContent = '▶';
+    ytPaused = true;
+  }
+}
+
 function _ytPostMessage(func, args) {
   const ytFrame = document.getElementById('yt-iframe');
   if (!ytFrame || !ytFrame.contentWindow) return;
@@ -810,7 +826,7 @@ function _ytPostMessage(func, args) {
 function _prewarmYouTubeIframe(videoId) {
   const ytFrame = document.getElementById('yt-iframe');
   if (!ytFrame || !videoId) return;
-  const newSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  const newSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1&controls=0&showinfo=0&iv_load_policy=3&modestbranding=1&disablekb=1`;
   if (ytFrame.src === newSrc) { ytPrewarmed = true; return; }
   ytFrame.src = newSrc;
   ytPrewarmed = true;
@@ -822,12 +838,15 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   const visualizer = document.getElementById('song-visualizer');
   const video      = document.getElementById('song-video');
   const badge      = document.getElementById('video-mode-badge');
+  const pauseBtn   = document.getElementById('yt-pause-btn');
   if (!ytFrame) return;
 
-  const expectedSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  const expectedSrc = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1&controls=0&showinfo=0&iv_load_policy=3&modestbranding=1&disablekb=1`;
   const isPrewarmed = ytPrewarmed && ytFrame.src === expectedSrc;
 
   audio.pause(); // pause JioSaavn — YouTube plays with its own audio
+  ytPaused = false;
+  if (pauseBtn) { pauseBtn.textContent = '❚❚'; pauseBtn.classList.remove('hidden'); }
 
   if (isPrewarmed) {
     // FAST PATH: already buffered — just unmute, seek, play
@@ -844,7 +863,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   } else {
     // COLD PATH: not yet pre-warmed — load with autoplay
     const start = (startSeconds > 0) ? `&start=${Math.floor(startSeconds)}` : '';
-    ytFrame.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${start}`;
+    ytFrame.src = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1&controls=0&showinfo=0&iv_load_policy=3&modestbranding=1&disablekb=1${start}`;
     ytFrame.classList.remove('hidden');
     visualizer?.classList.add('hidden');
     video?.classList.add('hidden');

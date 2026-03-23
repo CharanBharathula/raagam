@@ -160,6 +160,7 @@
             <!-- YouTube iframe: loaded via Piped API proxy, muted visuals-only -->
             <iframe id="yt-iframe" class="yt-iframe hidden" frameborder="0"
               allow="autoplay; encrypted-media" allowfullscreen title="Music video"></iframe>
+            <button id="yt-pause-btn" class="yt-pause-btn hidden" onclick="toggleYouTubePause()" aria-label="Pause/Play video">❚❚</button>
             <!-- Canvas visualizer: Spotify Canvas-style animated album art -->
             <div class="song-visualizer" id="song-visualizer">
               <div class="visualizer-bg" id="visualizer-bg"></div>
@@ -401,7 +402,7 @@
   <script src="songs-db.js"></script>
   <script src="bollywood-songs-db.js"></script>
   <script src="ai-engine.js"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 <script>
 const RELEASE_STATIC = '23';
 (async () => {
