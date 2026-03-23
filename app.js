@@ -23,6 +23,12 @@ let vocalHideOriginalSong = null;
 let vocalHideSourceSongId = null;
 let vocalHideTransitioning = false;
 let vocalTargetTime = null;
+let activeVocalEngine = 'none'; // none | center | alt
+
+let audioContext = null;
+let audioMediaSource = null;
+let audioNormalGain = null;
+let audioCenterGain = null;
 
 let homeFeed = null;
 let homeFeedLoaded = false;
@@ -50,7 +56,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '29';
+const RELEASE_MARKER = '30';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -437,6 +443,83 @@ function clearVocalHideState() {
   vocalTargetTime = null;
 }
 
+function ensureAudioGraph() {
+  if (audioContext && audioMediaSource && audioNormalGain && audioCenterGain) return true;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return false;
+
+  try {
+    audioContext = new Ctx();
+    audioMediaSource = audioContext.createMediaElementSource(audio);
+
+    audioNormalGain = audioContext.createGain();
+    audioCenterGain = audioContext.createGain();
+    audioNormalGain.gain.value = 1;
+    audioCenterGain.gain.value = 0;
+
+    // Normal signal path.
+    audioMediaSource.connect(audioNormalGain);
+    audioNormalGain.connect(audioContext.destination);
+
+    // Lightweight center-channel cancellation fallback for broad song coverage.
+    const splitter = audioContext.createChannelSplitter(2);
+    const merger = audioContext.createChannelMerger(2);
+
+    const lToL = audioContext.createGain();
+    const rToL = audioContext.createGain();
+    const lToR = audioContext.createGain();
+    const rToR = audioContext.createGain();
+
+    lToL.gain.value = 1;
+    rToL.gain.value = -1;
+    lToR.gain.value = -1;
+    rToR.gain.value = 1;
+
+    audioMediaSource.connect(splitter);
+    splitter.connect(lToL, 0);
+    splitter.connect(rToL, 1);
+    splitter.connect(lToR, 0);
+    splitter.connect(rToR, 1);
+
+    lToL.connect(merger, 0, 0);
+    rToL.connect(merger, 0, 0);
+    lToR.connect(merger, 0, 1);
+    rToR.connect(merger, 0, 1);
+
+    merger.connect(audioCenterGain);
+    audioCenterGain.connect(audioContext.destination);
+    return true;
+  } catch (e) {
+    audioContext = null;
+    audioMediaSource = null;
+    audioNormalGain = null;
+    audioCenterGain = null;
+    return false;
+  }
+}
+
+function setCenterVocalReduction(enabled) {
+  if (!ensureAudioGraph() || !audioContext || !audioNormalGain || !audioCenterGain) return false;
+
+  const normalLevel = enabled ? 0 : 1;
+  const centerLevel = enabled ? 1 : 0;
+  const now = Number(audioContext.currentTime || 0);
+
+  try {
+    audioNormalGain.gain.cancelScheduledValues(now);
+    audioCenterGain.gain.cancelScheduledValues(now);
+    audioNormalGain.gain.setValueAtTime(audioNormalGain.gain.value, now);
+    audioCenterGain.gain.setValueAtTime(audioCenterGain.gain.value, now);
+    audioNormalGain.gain.linearRampToValueAtTime(normalLevel, now + 0.08);
+    audioCenterGain.gain.linearRampToValueAtTime(centerLevel, now + 0.08);
+  } catch (e) {
+    audioNormalGain.gain.value = normalLevel;
+    audioCenterGain.gain.value = centerLevel;
+  }
+
+  return true;
+}
+
 function applyFineSync(afterMs = 220, attempts = 3) {
   if (!attempts || !currentSong) return;
   setTimeout(() => {
@@ -462,17 +545,24 @@ function restoreVocalHideSource(showModeToast = false) {
   setAudioSourceKeepingPosition(vocalHideOriginalSong.audio, desiredTime, shouldPlay);
   applyFineSync();
   clearVocalHideState();
+  activeVocalEngine = 'none';
   if (showModeToast) showToast('Voice mode: Normal');
 }
 
 async function applyVocalHideForCurrentSong() {
   if (voiceMode !== 'vocal' || !currentSong || vocalHideTransitioning) return;
-  if (vocalHideOriginalSong && vocalHideSourceSongId === currentSong.id) return;
+  if (vocalHideOriginalSong && vocalHideSourceSongId === currentSong.id && activeVocalEngine === 'alt') return;
 
   vocalHideTransitioning = true;
   const sourceId = currentSong.id;
   const desiredTime = audio.currentTime || 0;
   const shouldPlay = !audio.paused;
+
+  const centerReady = setCenterVocalReduction(true);
+  if (centerReady) {
+    activeVocalEngine = 'center';
+    updateVoiceModeButton();
+  }
 
   const alt = await findVocalHideAlternative(currentSong);
   if (!currentSong || currentSong.id !== sourceId || voiceMode !== 'vocal') {
@@ -481,10 +571,16 @@ async function applyVocalHideForCurrentSong() {
   }
 
   if (!alt?.audio) {
-    voiceMode = 'normal';
-    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-    updateVoiceModeButton();
-    showToast('Vocal-hide track unavailable for this song');
+    if (centerReady) {
+      showToast('Voice mode: Vocal Hide (on-device)');
+      updateVoiceModeButton();
+    } else {
+      voiceMode = 'normal';
+      localStorage.setItem(VOICE_MODE_KEY, voiceMode);
+      activeVocalEngine = 'none';
+      updateVoiceModeButton();
+      showToast('Vocal-hide unavailable on this browser');
+    }
     vocalHideTransitioning = false;
     return;
   }
@@ -499,11 +595,21 @@ async function applyVocalHideForCurrentSong() {
   const ok = setAudioSourceKeepingPosition(alt.audio, adjusted, shouldPlay);
   if (!ok) {
     clearVocalHideState();
-    voiceMode = 'normal';
-    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-    updateVoiceModeButton();
-    showToast('Vocal-hide source unavailable');
+    if (centerReady) {
+      activeVocalEngine = 'center';
+      updateVoiceModeButton();
+      showToast('Voice mode: Vocal Hide (on-device)');
+    } else {
+      voiceMode = 'normal';
+      localStorage.setItem(VOICE_MODE_KEY, voiceMode);
+      activeVocalEngine = 'none';
+      updateVoiceModeButton();
+      showToast('Vocal-hide source unavailable');
+    }
   } else {
+    setCenterVocalReduction(false);
+    activeVocalEngine = 'alt';
+    updateVoiceModeButton();
     showToast('Voice mode: Vocal Hide');
     applyFineSync();
   }
@@ -519,7 +625,13 @@ function shouldResetVocalHideForSong(song) {
 
 function applyVoiceMode() {
   if (voiceMode === 'normal') {
-    restoreVocalHideSource(true);
+    const wasAlt = activeVocalEngine === 'alt';
+    if (wasAlt) restoreVocalHideSource(false);
+    else clearVocalHideState();
+    setCenterVocalReduction(false);
+    activeVocalEngine = 'none';
+    updateVoiceModeButton();
+    showToast('Voice mode: Normal');
   } else {
     applyVocalHideForCurrentSong();
   }
@@ -529,7 +641,10 @@ function updateVoiceModeButton() {
   const btn = document.getElementById('voice-mode-btn');
   if (!btn) return;
   btn.classList.toggle('active', voiceMode !== 'normal');
-  const label = `Voice mode: ${VOICE_MODE_LABELS[voiceMode] || 'Normal'}`;
+  const modeLabel = voiceMode === 'vocal' && activeVocalEngine === 'center'
+    ? 'Vocal Hide (On-device)'
+    : (VOICE_MODE_LABELS[voiceMode] || 'Normal');
+  const label = `Voice mode: ${modeLabel}`;
   btn.title = label;
   btn.setAttribute('aria-label', label);
 }
@@ -558,7 +673,10 @@ function cycleVoiceMode() {
 }
 
 function unlockAudioGraph() {
-  // No-op: retained for backward compatibility with existing calls.
+  if (!ensureAudioGraph() || !audioContext) return;
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
 }
 
 function getAudioFallbackUrls(url) {
@@ -1747,7 +1865,17 @@ function playSong(song) {
   currentSongStreamRefreshed = false;
   if (shouldResetVocalHideForSong(song)) {
     clearVocalHideState();
+    activeVocalEngine = 'none';
   }
+  if (voiceMode === 'vocal') {
+    if (setCenterVocalReduction(true)) {
+      activeVocalEngine = 'center';
+    }
+  } else {
+    setCenterVocalReduction(false);
+    activeVocalEngine = 'none';
+  }
+  updateVoiceModeButton();
   currentSong = song;
   activeLanguage = (song.language === 'hindi') ? 'hindi' : 'telugu';
   showLoading(true);
