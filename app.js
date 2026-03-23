@@ -22,6 +22,7 @@ let vocalAltCache = {};
 let vocalHideOriginalSong = null;
 let vocalHideSourceSongId = null;
 let vocalHideTransitioning = false;
+let vocalTargetTime = null;
 
 let homeFeed = null;
 let homeFeedLoaded = false;
@@ -49,7 +50,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '28';
+const RELEASE_MARKER = '29';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -78,6 +79,20 @@ const PREVIEW_MAX_VOLUME = 0.38;
 const PREVIEW_FADE_IN_STEP = 0.04;
 const PREVIEW_FADE_OUT_STEP = 0.08;
 
+const IS_MOBILE = (() => {
+  try {
+    return /Android|iPhone|iPad|iPod|Mobile|Opera Mini|IEMobile/i.test(navigator.userAgent || '')
+      || (window.matchMedia && window.matchMedia('(max-width: 900px)').matches);
+  } catch (e) {
+    return false;
+  }
+})();
+
+let homeShelvesRendered = { telugu: false, hindi: false };
+let fallbackHomeCache = {};
+let latestTimeUiUpdateAt = 0;
+let latestMediaSyncAt = 0;
+
 // Player media mode state (audio artwork / video)
 let currentMediaMode = 'audio';
 let currentVideoUrl = '';
@@ -103,7 +118,7 @@ const INVIDIOUS_INSTANCES = [
   'invidious.fdn.fr',
   'yewtu.be'
 ];
-const PIPED_TIMEOUT_MS = 5000;
+const PIPED_TIMEOUT_MS = IS_MOBILE ? 2600 : 4200;
 let youtubeApiQuotaExhausted = false;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
@@ -183,7 +198,15 @@ function scoreYouTubeCandidate(song, candidate) {
 
   if (/karaoke|cover|remix|nightcore|sped up|slowed|instrumental|dj/i.test(titleNorm)) score -= 0.35;
   if (/teaser|trailer|reaction|review|status|shorts/i.test(titleNorm)) score -= 0.25;
+  if (/scene|bgm|theme|trending|teaser|promo/i.test(titleNorm)) score -= 0.18;
   if (/official|video|4k|hd|lyrics?/i.test(titleNorm)) score += 0.08;
+
+  const songTitleNorm = normalizeForMatch(song?.name || '');
+  const artistNorm = normalizeForMatch(getSongArtistSeed(song));
+  if (songTitleNorm && titleNorm.includes(songTitleNorm)) score += 0.2;
+  if (artistNorm && (titleNorm.includes(artistNorm) || normalizeForMatch(candidate?.channel || '').includes(artistNorm))) {
+    score += 0.12;
+  }
 
   return score;
 }
@@ -216,6 +239,22 @@ function pickVideoIdFromCandidates(song, candidates, minScore = 0.34) {
     return fallback?.videoId || null;
   }
   return null;
+}
+
+function fallbackVideoIdFromCandidates(song, candidates) {
+  const nameNorm = normalizeForMatch(song?.name || '');
+  const artistNorm = normalizeForMatch(getSongArtistSeed(song));
+  for (const candidate of candidates || []) {
+    const id = String(candidate?.videoId || '').trim();
+    if (id.length !== 11) continue;
+    const titleNorm = normalizeForMatch(candidate?.title || '');
+    const channelNorm = normalizeForMatch(candidate?.channel || '');
+    if (nameNorm && titleNorm.includes(nameNorm)) {
+      if (!artistNorm || titleNorm.includes(artistNorm) || channelNorm.includes(artistNorm)) return id;
+    }
+  }
+  const first = (candidates || []).find(c => String(c?.videoId || '').trim().length === 11);
+  return first?.videoId || null;
 }
 
 function updateVideoAvailability(hasVideo) {
@@ -271,6 +310,7 @@ function normalizeVocalAltCandidate(raw, fallbackLanguage) {
     album: decodeHtml(String(typeof raw.album === 'object' ? raw.album?.name : raw.album || '')).trim(),
     image: pickBestDownloadUrl(raw.image || raw.images || []),
     year: String(raw.year || '').trim(),
+    duration: Number(raw.duration || 0) || 0,
     audio: String(audioUrl).trim().replace(/^http:\/\//i, 'https://'),
     language: String(raw.language || fallbackLanguage || 'telugu').toLowerCase() === 'hindi' ? 'hindi' : 'telugu'
   };
@@ -287,7 +327,27 @@ function scoreVocalAltCandidate(song, candidate) {
   if (/remix|cover|sped|slowed|nightcore|dj/.test(text)) score -= 0.35;
   score += overlapScore(songTokens, candTokens) * 0.5;
   score += overlapScore(artistTokens, candTokens) * 0.2;
+
+  const baseDuration = Number(song?.duration || 0) || 0;
+  const altDuration = Number(candidate?.duration || 0) || 0;
+  if (baseDuration > 30 && altDuration > 30) {
+    const diff = Math.abs(baseDuration - altDuration) / baseDuration;
+    if (diff <= 0.04) score += 0.25;
+    else if (diff <= 0.08) score += 0.12;
+    else if (diff > 0.25) score -= 0.2;
+  }
+
   return score;
+}
+
+function mapTimeBetweenDurations(fromTime, fromDuration, toDuration) {
+  const t = Math.max(0, Number(fromTime) || 0);
+  const fromDur = Number(fromDuration || 0) || 0;
+  const toDur = Number(toDuration || 0) || 0;
+  if (!(fromDur > 20 && toDur > 20)) return t;
+  const ratio = toDur / fromDur;
+  if (Math.abs(1 - ratio) < 0.02) return t;
+  return Math.max(0, Math.min(toDur - 0.25, t * ratio));
 }
 
 async function fetchVocalAltResults(query) {
@@ -353,6 +413,7 @@ function setAudioSourceKeepingPosition(url, targetTime, shouldPlay) {
   currentSongStreamRefreshed = false;
 
   const desired = Math.max(0, Number(targetTime) || 0);
+  vocalTargetTime = desired;
   const onMeta = () => {
     audio.removeEventListener('loadedmetadata', onMeta);
     if (desired > 0) {
@@ -373,6 +434,21 @@ function clearVocalHideState() {
   vocalHideOriginalSong = null;
   vocalHideSourceSongId = null;
   vocalHideTransitioning = false;
+  vocalTargetTime = null;
+}
+
+function applyFineSync(afterMs = 220, attempts = 3) {
+  if (!attempts || !currentSong) return;
+  setTimeout(() => {
+    if (!currentSong || isNaN(audio.duration) || audio.duration <= 0) return;
+    const target = Number(vocalTargetTime || 0);
+    if (!target) return;
+    const delta = Math.abs((audio.currentTime || 0) - target);
+    if (delta > 0.12) {
+      try { audio.currentTime = target; } catch (e) {}
+    }
+    if (attempts > 1) applyFineSync(260, attempts - 1);
+  }, afterMs);
 }
 
 function restoreVocalHideSource(showModeToast = false) {
@@ -381,9 +457,10 @@ function restoreVocalHideSource(showModeToast = false) {
     return;
   }
 
-  const desiredTime = audio.currentTime || 0;
+  const desiredTime = mapTimeBetweenDurations(audio.currentTime || 0, currentSong.duration || 0, vocalHideOriginalSong.duration || 0);
   const shouldPlay = !audio.paused;
   setAudioSourceKeepingPosition(vocalHideOriginalSong.audio, desiredTime, shouldPlay);
+  applyFineSync();
   clearVocalHideState();
   if (showModeToast) showToast('Voice mode: Normal');
 }
@@ -413,11 +490,13 @@ async function applyVocalHideForCurrentSong() {
   }
 
   vocalHideOriginalSong = {
-    audio: currentSong.audio
+    audio: currentSong.audio,
+    duration: Number(currentSong.duration || audio.duration || 0) || 0
   };
   vocalHideSourceSongId = currentSong.id;
 
-  const ok = setAudioSourceKeepingPosition(alt.audio, desiredTime, shouldPlay);
+  const adjusted = mapTimeBetweenDurations(desiredTime, vocalHideOriginalSong.duration, alt.duration || 0);
+  const ok = setAudioSourceKeepingPosition(alt.audio, adjusted, shouldPlay);
   if (!ok) {
     clearVocalHideState();
     voiceMode = 'normal';
@@ -426,6 +505,7 @@ async function applyVocalHideForCurrentSong() {
     showToast('Vocal-hide source unavailable');
   } else {
     showToast('Voice mode: Vocal Hide');
+    applyFineSync();
   }
 
   vocalHideTransitioning = false;
@@ -752,8 +832,8 @@ function enterApp() {
   loadDownloadedSongs();
   loadVocalAltCache();
   loadVoiceMode();
-  warmSearchIndex();
   renderDynamicHomeContent(false);
+  if (!IS_MOBILE) warmSearchIndex();
   showPage('home');
   updateHomeStats();
   renderRecent();
@@ -1306,7 +1386,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 
 async function _fetchFromInnerTube(query, limit = 8) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 6000);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3800);
   try {
     const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
       method: 'POST',
@@ -1344,7 +1424,7 @@ async function _fetchFromYouTubeAPI(query, limit = 8) {
   if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=${limit}&key=${YOUTUBE_API_KEY}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 5000);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
@@ -1516,6 +1596,13 @@ async function fetchYouTubeVideoId(song) {
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
         return videoId;
+      }
+
+      const fallbackVideoId = fallbackVideoIdFromCandidates(song, allCandidates);
+      if (fallbackVideoId) {
+        videoSearchCache[song.id] = { videoId: fallbackVideoId, searched: true };
+        _cacheVideoId(song.id, fallbackVideoId);
+        return fallbackVideoId;
       }
     } catch { /* all instances failed, try next query */ }
   }
@@ -1981,14 +2068,24 @@ audio.addEventListener('error', async () => {
 });
 audio.addEventListener('timeupdate', () => {
   if (!audio.duration || isNaN(audio.duration)) return;
-  const pct = (audio.currentTime/audio.duration)*100;
-  document.getElementById('progress-fill').style.width = pct+'%';
-  document.getElementById('progress-knob').style.left = pct+'%';
-  document.getElementById('time-current').textContent = fmtTime(audio.currentTime);
-  document.getElementById('time-total').textContent = fmtTime(audio.duration);
-  syncSongVideoTime();
-  if (currentVideoContent === 'youtube' && !audio.paused) {
-    syncYouTubeTime(false);
+  const now = Date.now();
+  const uiTick = IS_MOBILE ? 170 : 95;
+  if (now - latestTimeUiUpdateAt >= uiTick) {
+    const pct = (audio.currentTime/audio.duration)*100;
+    document.getElementById('progress-fill').style.width = pct+'%';
+    document.getElementById('progress-knob').style.left = pct+'%';
+    document.getElementById('time-current').textContent = fmtTime(audio.currentTime);
+    document.getElementById('time-total').textContent = fmtTime(audio.duration);
+    latestTimeUiUpdateAt = now;
+  }
+
+  const mediaTick = IS_MOBILE ? 250 : 120;
+  if (now - latestMediaSyncAt >= mediaTick) {
+    syncSongVideoTime();
+    if (currentVideoContent === 'youtube' && !audio.paused) {
+      syncYouTubeTime(false);
+    }
+    latestMediaSyncAt = now;
   }
 });
 audio.addEventListener('pause', () => {
@@ -2164,9 +2261,16 @@ function showPage(name) {
   if (npb && currentSong) npb.classList.toggle('hidden', name==='player');
   if (name==='library') renderLibrary();
   if (name==='profile') renderProfile();
-  if (name==='home') { renderRecent(); updateHomeStats(); renderDynamicHomeContent(false); }
+  if (name==='home') {
+    renderRecent();
+    updateHomeStats();
+    if (!homeShelvesRendered.telugu) renderDynamicHomeContent(false);
+  }
   if (name==='search') { setTimeout(() => document.getElementById('search-input')?.focus(), 50); }
-  if (name==='bollywood') { renderBollywoodList(); renderDynamicHomeContent(false); }
+  if (name==='bollywood') {
+    renderBollywoodList();
+    if (!homeShelvesRendered.hindi) renderDynamicHomeContent(false);
+  }
   if (name==='player') updatePlayerDownloadBtn();
 }
 
@@ -2554,6 +2658,7 @@ function resolveFeedSongIds(ids, language, byIdMap) {
 }
 
 function fallbackHomeData(language) {
+  if (fallbackHomeCache[language]) return fallbackHomeCache[language];
   const source = language === 'hindi'
     ? ((typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [])
     : ((typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : []);
@@ -2576,11 +2681,13 @@ function fallbackHomeData(language) {
       songIds: songs.slice(0, 30).map(song => song.id)
     }));
 
-  return {
+  const data = {
     newReleases: sortedByYear.slice(0, 12),
     top50: source.slice(0, 50),
     collections
   };
+  fallbackHomeCache[language] = data;
+  return data;
 }
 
 function renderHomeLanguageShelves(language, payload, byIdMap) {
@@ -2661,19 +2768,24 @@ async function fetchHomeFeed(force = false) {
 }
 
 async function renderDynamicHomeContent(force = false) {
+  if (!force && homeShelvesRendered.telugu && homeShelvesRendered.hindi) return;
   const payload = await fetchHomeFeed(force);
   const byIdMap = mergeCatalogFromFeed(payload?.songs || []);
 
   if (payload?.languages?.telugu) {
     renderHomeLanguageShelves('telugu', payload.languages.telugu, byIdMap);
+    homeShelvesRendered.telugu = true;
   } else {
     renderHomeLanguageShelves('telugu', null, byIdMap);
+    homeShelvesRendered.telugu = true;
   }
 
   if (payload?.languages?.hindi) {
     renderHomeLanguageShelves('hindi', payload.languages.hindi, byIdMap);
+    homeShelvesRendered.hindi = true;
   } else {
     renderHomeLanguageShelves('hindi', null, byIdMap);
+    homeShelvesRendered.hindi = true;
   }
 }
 
@@ -2989,6 +3101,10 @@ function initSearch() {
   const input = document.getElementById('search-input');
   const clearBtn = document.getElementById('search-clear');
   if (!input) return;
+
+  input.addEventListener('focus', () => {
+    warmSearchIndex();
+  }, { once: true });
   let debounce;
   input.addEventListener('input', () => {
     clearTimeout(debounce);
@@ -2996,7 +3112,7 @@ function initSearch() {
     clearBtn.style.display = q ? 'block' : 'none';
     debounce = setTimeout(() => {
       renderSearchResults(performSearch(q), q);
-    }, 120);
+    }, IS_MOBILE ? 180 : 120);
   });
 }
 
@@ -3102,6 +3218,7 @@ function _buildPreviewAttr(s) {
 
 function initSongPreviews() {
   if (previewsInitialized) return;
+  if (IS_MOBILE) return;
   // Only activate on devices with fine pointer (desktop/mouse), not touch screens
   if (!window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
   previewsInitialized = true;
@@ -3253,7 +3370,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('voice-mode-btn')?.addEventListener('click', unlockAudioGraph);
   initProgressDrag();
   loadVoiceMode();
-  warmSearchIndex();
+  if (!IS_MOBILE) warmSearchIndex();
   
   ['auth-username','auth-password','auth-display'].forEach(id => {
     document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') submitAuth(); });
