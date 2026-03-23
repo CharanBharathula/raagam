@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '15';
+const RELEASE_MARKER = '16';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -48,6 +48,7 @@ const PREVIEW_FADE_OUT_STEP = 0.08;
 let currentMediaMode = 'audio';
 let currentVideoUrl = '';
 let currentVideoContent = 'visualizer'; // 'visualizer' | 'video' | 'youtube'
+let ytPrewarmed = false; // true when yt-iframe is silently pre-buffering with mute=1
 
 const PIPED_INSTANCES = [
   'pipedapi.kavin.rocks',
@@ -614,8 +615,17 @@ function switchToAudioMode() {
   art?.classList.remove('hidden');
   videoWrap?.classList.add('hidden');
   if (video) video.pause();
-  // Clear YouTube iframe to stop playback and free bandwidth
-  if (ytFrame) { ytFrame.src = ''; ytFrame.classList.add('hidden'); }
+  if (ytFrame) {
+    if (ytPrewarmed) {
+      // Keep iframe buffered — mute, pause, hide (src preserved for instant re-entry)
+      _ytPostMessage('mute', []);
+      _ytPostMessage('pauseVideo', []);
+      ytFrame.classList.add('hidden');
+    } else {
+      ytFrame.src = '';
+      ytFrame.classList.add('hidden');
+    }
+  }
   // Resume JioSaavn audio when leaving YouTube video mode
   if (wasInYouTubeMode) audio.play().catch(() => {});
 }
@@ -678,22 +688,58 @@ function switchToVideoMode() {
   }
 }
 
+function _ytPostMessage(func, args) {
+  const ytFrame = document.getElementById('yt-iframe');
+  if (!ytFrame || !ytFrame.contentWindow) return;
+  ytFrame.contentWindow.postMessage(
+    JSON.stringify({ event: 'command', func, args: args || [] }), '*'
+  );
+}
+
+function _prewarmYouTubeIframe(videoId) {
+  const ytFrame = document.getElementById('yt-iframe');
+  if (!ytFrame || !videoId) return;
+  const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  if (ytFrame.src === newSrc) { ytPrewarmed = true; return; }
+  ytFrame.src = newSrc;
+  ytPrewarmed = true;
+  // container stays hidden — video buffers silently in background
+}
+
 function _activateYouTubeIframe(videoId, startSeconds) {
   const ytFrame    = document.getElementById('yt-iframe');
   const visualizer = document.getElementById('song-visualizer');
   const video      = document.getElementById('song-video');
   const badge      = document.getElementById('video-mode-badge');
   if (!ytFrame) return;
-  // Pause JioSaavn audio — YouTube video plays with its own audio
-  audio.pause();
-  const start = (startSeconds > 0) ? `&start=${Math.floor(startSeconds)}` : '';
-  // No mute=1, no controls=0 — play the actual music video with audio
-  ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1${start}`;
-  ytFrame.classList.remove('hidden');
-  visualizer?.classList.add('hidden');
-  video?.classList.add('hidden');
-  currentVideoContent = 'youtube';
-  if (badge) badge.textContent = 'YOUTUBE';
+
+  const expectedSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1`;
+  const isPrewarmed = ytPrewarmed && ytFrame.src === expectedSrc;
+
+  audio.pause(); // pause JioSaavn — YouTube plays with its own audio
+
+  if (isPrewarmed) {
+    // FAST PATH: already buffered — just unmute, seek, play
+    ytFrame.classList.remove('hidden');
+    visualizer?.classList.add('hidden');
+    video?.classList.add('hidden');
+    currentVideoContent = 'youtube';
+    if (badge) badge.textContent = 'YOUTUBE';
+    setTimeout(() => {
+      if (startSeconds > 0) _ytPostMessage('seekTo', [Math.floor(startSeconds), true]);
+      _ytPostMessage('unMute', []);
+      _ytPostMessage('playVideo', []);
+    }, 50);
+  } else {
+    // COLD PATH: not yet pre-warmed — load with autoplay
+    const start = (startSeconds > 0) ? `&start=${Math.floor(startSeconds)}` : '';
+    ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1&enablejsapi=1${start}`;
+    ytFrame.classList.remove('hidden');
+    visualizer?.classList.add('hidden');
+    video?.classList.add('hidden');
+    currentVideoContent = 'youtube';
+    if (badge) badge.textContent = 'YOUTUBE';
+  }
 }
 
 async function _fetchFromPiped(instance, query) {
@@ -776,7 +822,11 @@ function setupSongMedia(song) {
   currentVideoUrl = getSongVideoUrl(song);
   currentVideoContent = currentVideoUrl ? 'video' : 'visualizer';
   currentMediaMode = 'audio';
-  switchToAudioMode(); // also clears ytFrame via the updated switchToAudioMode
+  // Clear pre-warm state for new song before switchToAudioMode runs
+  ytPrewarmed = false;
+  const ytFrameReset = document.getElementById('yt-iframe');
+  if (ytFrameReset) { ytFrameReset.src = ''; ytFrameReset.classList.add('hidden'); }
+  switchToAudioMode();
 
   // Always show the media switch — every song supports video mode
   switchEl?.classList.remove('hidden');
@@ -819,15 +869,18 @@ function setupSongMedia(song) {
   // Background Piped API search — non-blocking, upgrades CANVAS → YOUTUBE when found
   const songIdAtSearch = song.id;
   fetchYouTubeVideoId(song).then(videoId => {
-    // Guard: user may have changed songs while the fetch was in progress
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
-    // Don't overwrite a direct mp4 video URL
     if (currentVideoContent === 'video') return;
     if (videoId) {
       currentVideoContent = 'youtube';
       if (badge) badge.textContent = 'YOUTUBE';
-      // If user is already watching in video mode, upgrade to iframe immediately
-      if (currentMediaMode === 'video') _activateYouTubeIframe(videoId);
+      if (currentMediaMode === 'video') {
+        // User already switched to video mode — activate immediately
+        _activateYouTubeIframe(videoId, audio.currentTime);
+      } else {
+        // Still in audio mode — silently pre-warm so Video click will be instant
+        _prewarmYouTubeIframe(videoId);
+      }
     }
   }).catch(() => {});
 }
@@ -960,6 +1013,11 @@ function playNext() {
   if (bollywoodCategoryPool && activeLanguage === 'hindi') {
     const idx = bollywoodCategoryPool.findIndex(s => s.id === currentSong?.id);
     const next = (idx >= 0 && idx < bollywoodCategoryPool.length - 1) ? bollywoodCategoryPool[idx + 1] : bollywoodCategoryPool[0];
+    // Look-ahead: pre-fetch video ID for the song after next in pool
+    const lookaheadIdx = bollywoodCategoryPool.indexOf(next) + 1;
+    if (lookaheadIdx < bollywoodCategoryPool.length) {
+      fetchYouTubeVideoId(bollywoodCategoryPool[lookaheadIdx]).catch(() => {});
+    }
     history.push(next); historyIndex = history.length - 1;
     playSong(next); return;
   }
@@ -968,6 +1026,8 @@ function playNext() {
     const idx = db.findIndex(s => s.id === currentSong.id);
     if (idx >= 0 && idx < db.length - 1) {
       const song = db[idx + 1];
+      // Look-ahead: pre-fetch video ID for the song after next in DB
+      if (idx + 2 < db.length) fetchYouTubeVideoId(db[idx + 2]).catch(() => {});
       history.push(song); historyIndex = history.length - 1;
       playSong(song); return;
     }
