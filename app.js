@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '21';
+const RELEASE_MARKER = '22';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -870,8 +870,23 @@ function setupSongMedia(song) {
   if (vizBg) vizBg.style.backgroundImage = imgUrl ? `url('${imgUrl}')` : '';
   if (vizArt) { vizArt.src = imgUrl; vizArt.style.display = imgUrl ? 'block' : 'none'; }
 
-  // Reset badge
-  if (badge) badge.textContent = currentVideoContent === 'video' ? 'MUSIC VIDEO' : 'CANVAS';
+  if (currentMediaMode === 'video') {
+    if (currentVideoContent === 'video') {
+      video.classList.remove('hidden');
+      visualizer.classList.add('hidden');
+    } else {
+      const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+      const cachedId = cache[song.id] || song.video;
+      
+      if (cachedId) {
+        currentVideoContent = 'youtube';
+        _activateYouTubeIframe(cachedId, audio.currentTime);
+      } else {
+        if (video) video.classList.add('hidden');
+        if (visualizer) visualizer.classList.remove('hidden');
+      }
+    }
+  }
 
   if (!video) return;
 
@@ -912,21 +927,20 @@ function setupSongMedia(song) {
      fetchYouTubeVideoId(db[currentIdx + 2]).catch(() => {});
   }
 
-  // Background Piped API search — non-blocking, upgrades CANVAS → YOUTUBE when found
+  // Background search (always runs, upgrades CANVAS → YOUTUBE when found)
   const songIdAtSearch = song.id;
   fetchYouTubeVideoId(song).then(videoId => {
-  // First enhancement: Cache the result persistently for future loads
-  const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
-  cache[song.id] = videoId;
-  localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
-    if (currentVideoContent === 'video') return;
+    if (currentVideoContent === 'video') return; // Local video file priority
+    
     if (videoId) {
       currentVideoContent = 'youtube';
-      if (badge) badge.textContent = 'YOUTUBE';
+      // If user is already in video mode, upgrade seamlessly
       if (currentMediaMode === 'video') {
-        // User already switched to video mode — activate immediately
-        _activateYouTubeIframe(videoId, audio.currentTime);
+         _activateYouTubeIframe(videoId, audio.currentTime);
+      }
+    }
+  });
       } else {
         // Still in audio mode — silently pre-warm so Video click will be instant
         _prewarmYouTubeIframe(videoId);
