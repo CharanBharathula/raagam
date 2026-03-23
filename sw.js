@@ -22,7 +22,7 @@ self.addEventListener('fetch', e => {
 
   // Skip non-GET and external APIs that should always go to network
   if (e.request.method !== 'GET') return;
-  if (url.includes('lrclib.net') || url.includes('youtube') || url.includes('googleapis') || url.includes('saavn.dev')) return;
+  if (url.includes('lrclib.net') || url.includes('youtube') || url.includes('googleapis') || url.includes('saavn.dev') || url.includes('piped') || url.includes('invidious') || url.includes('artemislena') || url.includes('flokinet') || url.includes('riverside')) return;
 
   // Let browser handle external media streaming directly (range requests can fail through SW cache logic)
   if (url.includes('aac.saavncdn.com') || /\.mp4(\?|$)/i.test(url)) return;

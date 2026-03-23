@@ -54,9 +54,17 @@ const PIPED_INSTANCES = [
   'pipedapi.tokhmi.xyz',
   'pipedapi.moomoo.me',
   'pipedapi.adminforge.de',
-  'api.piped.yt'
+  'api.piped.yt',
+  'piped-api.garudalinux.org',
+  'pipedapi.in.projectsegfau.lt'
 ];
-const PIPED_TIMEOUT_MS = 4000;
+const INVIDIOUS_INSTANCES = [
+  'invidious.privacydev.net',
+  'yt.artemislena.eu',
+  'invidious.flokinet.to',
+  'inv.riverside.rocks'
+];
+const PIPED_TIMEOUT_MS = 5000;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
 
@@ -591,6 +599,7 @@ function syncSongVideoTime() {
 }
 
 function switchToAudioMode() {
+  const wasInYouTubeMode = (currentMediaMode === 'video' && currentVideoContent === 'youtube');
   currentMediaMode = 'audio';
   const audioBtn = document.getElementById('media-audio-btn');
   const videoBtn = document.getElementById('media-video-btn');
@@ -607,6 +616,8 @@ function switchToAudioMode() {
   if (video) video.pause();
   // Clear YouTube iframe to stop playback and free bandwidth
   if (ytFrame) { ytFrame.src = ''; ytFrame.classList.add('hidden'); }
+  // Resume JioSaavn audio when leaving YouTube video mode
+  if (wasInYouTubeMode) audio.play().catch(() => {});
 }
 
 function switchToVideoMode() {
@@ -646,7 +657,7 @@ function switchToVideoMode() {
     // YouTube iframe — videoId is in cache
     const cached = videoSearchCache[currentSong?.id];
     if (cached?.videoId) {
-      _activateYouTubeIframe(cached.videoId);
+      _activateYouTubeIframe(cached.videoId, audio.currentTime);
     } else {
       currentVideoContent = 'visualizer';
       video?.classList.add('hidden');
@@ -655,20 +666,29 @@ function switchToVideoMode() {
       if (badge) badge.textContent = 'CANVAS';
     }
   } else {
-    // Canvas visualizer (default / Piped still searching / no result found)
+    // Canvas visualizer — search may still be in progress
     video?.classList.add('hidden');
     ytFrame?.classList.add('hidden');
     visualizer?.classList.remove('hidden');
+    // Show a searching indicator if Piped/Invidious fetch is still running
+    const searchState = videoSearchCache[currentSong?.id];
+    if (searchState && !searchState.searched) {
+      if (badge) badge.textContent = 'SEARCHING...';
+    }
   }
 }
 
-function _activateYouTubeIframe(videoId) {
+function _activateYouTubeIframe(videoId, startSeconds) {
   const ytFrame    = document.getElementById('yt-iframe');
   const visualizer = document.getElementById('song-visualizer');
   const video      = document.getElementById('song-video');
   const badge      = document.getElementById('video-mode-badge');
   if (!ytFrame) return;
-  ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1&rel=0`;
+  // Pause JioSaavn audio — YouTube video plays with its own audio
+  audio.pause();
+  const start = (startSeconds > 0) ? `&start=${Math.floor(startSeconds)}` : '';
+  // No mute=1, no controls=0 — play the actual music video with audio
+  ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&rel=0&playsinline=1${start}`;
   ytFrame.classList.remove('hidden');
   visualizer?.classList.add('hidden');
   video?.classList.add('hidden');
@@ -676,11 +696,45 @@ function _activateYouTubeIframe(videoId) {
   if (badge) badge.textContent = 'YOUTUBE';
 }
 
+async function _fetchFromPiped(instance, query) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
+      { signal: ctrl.signal }
+    );
+    clearTimeout(t);
+    if (!res.ok) throw new Error('bad');
+    const data = await res.json();
+    const first = Array.isArray(data?.items) ? data.items[0] : null;
+    const videoId = String(first?.url || '').replace('/watch?v=', '').split('&')[0].trim();
+    if (!videoId || videoId.length < 5) throw new Error('no id');
+    return videoId;
+  } catch (e) { clearTimeout(t); throw e; }
+}
+
+async function _fetchFromInvidious(instance, query) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
+      { signal: ctrl.signal }
+    );
+    clearTimeout(t);
+    if (!res.ok) throw new Error('bad');
+    const data = await res.json();
+    const videoId = String(Array.isArray(data) && data[0]?.videoId || '').trim();
+    if (!videoId || videoId.length < 5) throw new Error('no id');
+    return videoId;
+  } catch (e) { clearTimeout(t); throw e; }
+}
+
 async function fetchYouTubeVideoId(song) {
   if (!song?.id) return null;
   const cached = videoSearchCache[song.id];
   if (cached?.searched) return cached.videoId;
-  // Mark in-progress to prevent duplicate concurrent fetches
   videoSearchCache[song.id] = { videoId: null, searched: false };
 
   const songName    = decodeHtml(song.name || '');
@@ -692,30 +746,18 @@ async function fetchYouTubeVideoId(song) {
   ];
 
   for (const query of queries) {
-    for (const instance of PIPED_INSTANCES) {
-      try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), PIPED_TIMEOUT_MS);
-        let data;
-        try {
-          const res = await fetch(
-            `https://${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
-            { signal: controller.signal }
-          );
-          clearTimeout(timer);
-          if (!res.ok) continue;
-          data = await res.json();
-        } catch (e) { clearTimeout(timer); continue; }
-
-        const first = Array.isArray(data?.items) ? data.items[0] : null;
-        if (!first?.url) continue;
-        const videoId = String(first.url).replace('/watch?v=', '').trim();
-        if (!videoId) continue;
-
+    // Race ALL Piped + Invidious instances simultaneously — fastest wins
+    const allFetches = [
+      ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query)),
+      ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query))
+    ];
+    try {
+      const videoId = await Promise.any(allFetches);
+      if (videoId) {
         videoSearchCache[song.id] = { videoId, searched: true };
         return videoId;
-      } catch (e) { continue; }
-    }
+      }
+    } catch { /* all instances failed, try next query */ }
   }
 
   videoSearchCache[song.id] = { videoId: null, searched: true };
