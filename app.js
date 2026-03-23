@@ -12,24 +12,16 @@ let lyricsTimer = null;
 let activeLanguage = 'telugu';
 let consecutiveErrors = 0;
 const VOICE_MODE_KEY = 'raagam_voice_mode';
+const VOCAL_ALT_CACHE_KEY = 'raagam_vocal_alt_cache_v1';
 const VOICE_MODE_LABELS = {
   normal: 'Normal',
   vocal: 'Vocal Hide'
 };
 let voiceMode = 'normal';
-
-let audioCtx = null;
-let audioSourceNode = null;
-let graphReady = false;
-let directGainNode = null;
-let vocalCutGainNode = null;
-let vocalNotchNode = null;
-let vocalCutNode = null;
-let vocalLowPassNode = null;
-let vocalPathConnected = false;
-let vocalDisconnectTimer = null;
-let mediaUnlocked = false;
-let voiceGraphUnavailable = false;
+let vocalAltCache = {};
+let vocalHideOriginalSong = null;
+let vocalHideSourceSongId = null;
+let vocalHideTransitioning = false;
 
 let homeFeed = null;
 let homeFeedLoaded = false;
@@ -57,7 +49,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '27';
+const RELEASE_MARKER = '28';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -252,100 +244,204 @@ function buildYouTubeEmbedUrl(videoId, startSeconds = 0) {
   return `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&mute=1&rel=0&playsinline=1&enablejsapi=1&controls=0&iv_load_policy=3&modestbranding=1&disablekb=1&fs=0&cc_load_policy=0&origin=${encodeURIComponent(location.origin)}${start}`;
 }
 
-function ensureAudioGraph() {
-  if (graphReady) return true;
-  if (voiceGraphUnavailable) return false;
+function loadVocalAltCache() {
   try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return false;
-    if (!audioCtx) audioCtx = new Ctx();
-
-    if (!audioSourceNode) {
-      audioSourceNode = audioCtx.createMediaElementSource(audio);
-    }
-
-    directGainNode = audioCtx.createGain();
-    vocalCutGainNode = audioCtx.createGain();
-
-    // Lightweight vocal-hide chain (lower CPU than full mid/side graph)
-    vocalNotchNode = audioCtx.createBiquadFilter();
-    vocalNotchNode.type = 'notch';
-    vocalNotchNode.frequency.value = 1500;
-    vocalNotchNode.Q.value = 1.1;
-
-    vocalCutNode = audioCtx.createBiquadFilter();
-    vocalCutNode.type = 'peaking';
-    vocalCutNode.frequency.value = 2200;
-    vocalCutNode.Q.value = 0.9;
-    vocalCutNode.gain.value = -15;
-
-    vocalLowPassNode = audioCtx.createBiquadFilter();
-    vocalLowPassNode.type = 'lowpass';
-    vocalLowPassNode.frequency.value = 8200;
-    vocalLowPassNode.Q.value = 0.65;
-
-    audioSourceNode.connect(directGainNode);
-    vocalCutGainNode.gain.value = 0;
-
-    directGainNode.connect(audioCtx.destination);
-    vocalCutGainNode.connect(audioCtx.destination);
-
-    graphReady = true;
-    applyVoiceMode();
-    return true;
+    vocalAltCache = JSON.parse(localStorage.getItem(VOCAL_ALT_CACHE_KEY) || '{}');
   } catch (e) {
-    console.warn('Voice mode unavailable in this browser/song source:', e);
-    voiceGraphUnavailable = true;
-    voiceMode = 'normal';
-    updateVoiceModeButton();
-    return false;
+    vocalAltCache = {};
   }
 }
 
-function connectVocalPath() {
-  if (!graphReady || vocalPathConnected || !audioSourceNode || !vocalNotchNode || !vocalCutNode || !vocalLowPassNode || !vocalCutGainNode) {
+function saveVocalAltCache() {
+  try {
+    localStorage.setItem(VOCAL_ALT_CACHE_KEY, JSON.stringify(vocalAltCache));
+  } catch (e) {}
+}
+
+function normalizeVocalAltCandidate(raw, fallbackLanguage) {
+  if (!raw || typeof raw !== 'object') return null;
+  const id = String(raw.id || '').trim();
+  const name = decodeHtml(String(raw.name || raw.title || '')).trim();
+  const audioUrl = pickBestDownloadUrl(raw.downloadUrl || raw.download_url || raw.media_url);
+  if (!id || !name || !audioUrl) return null;
+  return {
+    id,
+    name,
+    artists: decodeHtml(String(raw.primaryArtists || raw.artists || raw.artist || '')).trim(),
+    album: decodeHtml(String(typeof raw.album === 'object' ? raw.album?.name : raw.album || '')).trim(),
+    image: pickBestDownloadUrl(raw.image || raw.images || []),
+    year: String(raw.year || '').trim(),
+    audio: String(audioUrl).trim().replace(/^http:\/\//i, 'https://'),
+    language: String(raw.language || fallbackLanguage || 'telugu').toLowerCase() === 'hindi' ? 'hindi' : 'telugu'
+  };
+}
+
+function scoreVocalAltCandidate(song, candidate) {
+  const text = normalizeForMatch(`${candidate.name} ${candidate.album} ${candidate.artists}`);
+  const songTokens = tokenizeForMatch(song?.name || '');
+  const artistTokens = tokenizeForMatch(getSongArtistSeed(song));
+  const candTokens = tokenizeForMatch(text);
+
+  let score = 0;
+  if (/karaoke|instrumental|minus one|backing track|bgm|music track/.test(text)) score += 0.65;
+  if (/remix|cover|sped|slowed|nightcore|dj/.test(text)) score -= 0.35;
+  score += overlapScore(songTokens, candTokens) * 0.5;
+  score += overlapScore(artistTokens, candTokens) * 0.2;
+  return score;
+}
+
+async function fetchVocalAltResults(query) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4500);
+  const endpoint = `https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=10`;
+  try {
+    const res = await fetch(endpoint, { signal: controller.signal });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    return payload?.data?.results || [];
+  } catch (e) {
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function findVocalHideAlternative(song) {
+  if (!song?.id) return null;
+
+  const cached = vocalAltCache[song.id];
+  if (cached?.status === 'hit' && cached.song?.audio) return cached.song;
+  if (cached?.status === 'miss' && cached.retryAfter && Date.now() < cached.retryAfter) return null;
+
+  const title = decodeHtml(song.name || '').trim();
+  const artist = getSongArtistSeed(song);
+  const queries = [
+    `${title} ${artist} karaoke`,
+    `${title} ${artist} instrumental`,
+    `${title} minus one`
+  ];
+
+  let best = null;
+  for (const query of queries) {
+    const rows = await fetchVocalAltResults(query);
+    for (const row of rows) {
+      const candidate = normalizeVocalAltCandidate(row, song.language || 'telugu');
+      if (!candidate) continue;
+      const score = scoreVocalAltCandidate(song, candidate);
+      if (!best || score > best.score) best = { score, song: candidate };
+    }
+  }
+
+  if (best && best.score >= 0.55) {
+    vocalAltCache[song.id] = { status: 'hit', song: best.song, cachedAt: Date.now() };
+    saveVocalAltCache();
+    return best.song;
+  }
+
+  vocalAltCache[song.id] = { status: 'miss', retryAfter: Date.now() + 12 * 60 * 60 * 1000 };
+  saveVocalAltCache();
+  return null;
+}
+
+function setAudioSourceKeepingPosition(url, targetTime, shouldPlay) {
+  const urls = getAudioFallbackUrls(url);
+  if (!urls.length) return false;
+
+  currentSong.audio = urls[0];
+  currentAudioFallbackUrls = urls;
+  currentAudioFallbackIndex = 0;
+  currentSongStreamRefreshed = false;
+
+  const desired = Math.max(0, Number(targetTime) || 0);
+  const onMeta = () => {
+    audio.removeEventListener('loadedmetadata', onMeta);
+    if (desired > 0) {
+      try { audio.currentTime = desired; } catch (e) {}
+    }
+    if (shouldPlay) audio.play().catch(() => {});
+  };
+
+  audio.addEventListener('loadedmetadata', onMeta, { once: true });
+  audio.src = urls[0];
+  isPlaying = shouldPlay;
+  updatePlayBtn();
+  audio.load();
+  return true;
+}
+
+function clearVocalHideState() {
+  vocalHideOriginalSong = null;
+  vocalHideSourceSongId = null;
+  vocalHideTransitioning = false;
+}
+
+function restoreVocalHideSource(showModeToast = false) {
+  if (!vocalHideOriginalSong || !currentSong || vocalHideSourceSongId !== currentSong.id) {
+    clearVocalHideState();
     return;
   }
-  try {
-    audioSourceNode.connect(vocalNotchNode);
-    vocalNotchNode.connect(vocalCutNode);
-    vocalCutNode.connect(vocalLowPassNode);
-    vocalLowPassNode.connect(vocalCutGainNode);
-    vocalPathConnected = true;
-  } catch (e) {
-    voiceGraphUnavailable = true;
-  }
+
+  const desiredTime = audio.currentTime || 0;
+  const shouldPlay = !audio.paused;
+  setAudioSourceKeepingPosition(vocalHideOriginalSong.audio, desiredTime, shouldPlay);
+  clearVocalHideState();
+  if (showModeToast) showToast('Voice mode: Normal');
 }
 
-function disconnectVocalPath() {
-  if (!graphReady || !vocalPathConnected) return;
-  try { audioSourceNode.disconnect(vocalNotchNode); } catch (e) {}
-  try { vocalNotchNode.disconnect(vocalCutNode); } catch (e) {}
-  try { vocalCutNode.disconnect(vocalLowPassNode); } catch (e) {}
-  try { vocalLowPassNode.disconnect(vocalCutGainNode); } catch (e) {}
-  vocalPathConnected = false;
+async function applyVocalHideForCurrentSong() {
+  if (voiceMode !== 'vocal' || !currentSong || vocalHideTransitioning) return;
+  if (vocalHideOriginalSong && vocalHideSourceSongId === currentSong.id) return;
+
+  vocalHideTransitioning = true;
+  const sourceId = currentSong.id;
+  const desiredTime = audio.currentTime || 0;
+  const shouldPlay = !audio.paused;
+
+  const alt = await findVocalHideAlternative(currentSong);
+  if (!currentSong || currentSong.id !== sourceId || voiceMode !== 'vocal') {
+    vocalHideTransitioning = false;
+    return;
+  }
+
+  if (!alt?.audio) {
+    voiceMode = 'normal';
+    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
+    updateVoiceModeButton();
+    showToast('Vocal-hide track unavailable for this song');
+    vocalHideTransitioning = false;
+    return;
+  }
+
+  vocalHideOriginalSong = {
+    audio: currentSong.audio
+  };
+  vocalHideSourceSongId = currentSong.id;
+
+  const ok = setAudioSourceKeepingPosition(alt.audio, desiredTime, shouldPlay);
+  if (!ok) {
+    clearVocalHideState();
+    voiceMode = 'normal';
+    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
+    updateVoiceModeButton();
+    showToast('Vocal-hide source unavailable');
+  } else {
+    showToast('Voice mode: Vocal Hide');
+  }
+
+  vocalHideTransitioning = false;
+}
+
+function shouldResetVocalHideForSong(song) {
+  if (voiceMode !== 'vocal') return false;
+  if (!song?.id) return false;
+  return vocalHideSourceSongId !== song.id;
 }
 
 function applyVoiceMode() {
-  if (!graphReady) return;
-  const now = audioCtx ? audioCtx.currentTime : 0;
-
-  if (voiceMode === 'vocal') {
-    if (vocalDisconnectTimer) {
-      clearTimeout(vocalDisconnectTimer);
-      vocalDisconnectTimer = null;
-    }
-    connectVocalPath();
-    directGainNode.gain.setTargetAtTime(0, now, 0.035);
-    vocalCutGainNode.gain.setTargetAtTime(1, now, 0.035);
+  if (voiceMode === 'normal') {
+    restoreVocalHideSource(true);
   } else {
-    directGainNode.gain.setTargetAtTime(1, now, 0.03);
-    vocalCutGainNode.gain.setTargetAtTime(0, now, 0.03);
-    if (vocalDisconnectTimer) clearTimeout(vocalDisconnectTimer);
-    vocalDisconnectTimer = setTimeout(() => {
-      if (voiceMode === 'normal') disconnectVocalPath();
-      vocalDisconnectTimer = null;
-    }, 180);
+    applyVocalHideForCurrentSong();
   }
 }
 
@@ -365,10 +461,6 @@ function loadVoiceMode() {
   } else {
     voiceMode = 'normal';
   }
-  if (!window.AudioContext && !window.webkitAudioContext) {
-    voiceMode = 'normal';
-    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-  }
   updateVoiceModeButton();
 }
 
@@ -376,39 +468,17 @@ function cycleVoiceMode() {
   const next = voiceMode === 'normal' ? 'vocal' : 'normal';
   voiceMode = next;
   localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-  if (voiceMode === 'vocal' && ensureAudioGraph()) {
-    if (audioCtx && audioCtx.state === 'suspended') {
-      audioCtx.resume().catch(() => {});
-    }
-    applyVoiceMode();
-    mediaUnlocked = true;
-  } else if (voiceMode === 'normal') {
-    applyVoiceMode();
-  }
   updateVoiceModeButton();
-  if (graphReady) {
-    showToast(`Voice mode: ${VOICE_MODE_LABELS[voiceMode]}`);
-  } else {
-    voiceMode = 'normal';
-    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-    updateVoiceModeButton();
-    showToast('Voice mode unavailable for this stream');
+  if (voiceMode === 'normal') {
+    applyVoiceMode();
+    return;
   }
+  showToast('Finding vocal-hide track...');
+  applyVocalHideForCurrentSong();
 }
 
 function unlockAudioGraph() {
-  if (mediaUnlocked || voiceGraphUnavailable || voiceMode !== 'vocal') return;
-  if (!ensureAudioGraph()) {
-    voiceMode = 'normal';
-    localStorage.setItem(VOICE_MODE_KEY, voiceMode);
-    updateVoiceModeButton();
-    return;
-  }
-  if (audioCtx && audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
-  applyVoiceMode();
-  mediaUnlocked = true;
+  // No-op: retained for backward compatibility with existing calls.
 }
 
 function getAudioFallbackUrls(url) {
@@ -680,6 +750,7 @@ function enterApp() {
   document.getElementById('home-greeting').textContent = `${greeting}, ${currentUser.displayName || currentUser.username}`;
   
   loadDownloadedSongs();
+  loadVocalAltCache();
   loadVoiceMode();
   warmSearchIndex();
   renderDynamicHomeContent(false);
@@ -1587,6 +1658,9 @@ function playSong(song) {
   }
   isLoadingNext = true;
   currentSongStreamRefreshed = false;
+  if (shouldResetVocalHideForSong(song)) {
+    clearVocalHideState();
+  }
   currentSong = song;
   activeLanguage = (song.language === 'hindi') ? 'hindi' : 'telugu';
   showLoading(true);
@@ -1661,6 +1735,9 @@ function playSong(song) {
     saveRecent(song);
     fetchLyrics(song);
     if (window.aiEngine) window.aiEngine.trackPlay(song);
+    if (voiceMode === 'vocal') {
+      applyVocalHideForCurrentSong();
+    }
   }).catch(e => {
     console.error('Play failed:', e);
     // Don't retry here — let the audio 'error' event handler deal with retries
