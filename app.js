@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '19';
+const RELEASE_MARKER = '20';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -794,6 +794,14 @@ async function _fetchFromCORSProxy(query) {
 }
 
 async function fetchYouTubeVideoId(song) {
+  // 0. Check if video URL/ID is already provided in the song object (DB override)
+  if (song?.video) {
+    // Extract ID if full URL, or use as-is if already an ID
+    const match = String(song.video).match(/(?:v=|youtu\.be\/|\/embed\/|\/v\/|shorts\/)([^#\&\?]*).*/);
+    const videoId = match ? match[1] : song.video;
+    if (videoId && videoId.length > 5) return Promise.resolve(videoId);
+  }
+
   // Check if the videoId is already cached for this song
   const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
   if (cache[song?.id]) { return Promise.resolve(cache[song.id]); }
