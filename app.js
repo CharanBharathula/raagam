@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '13';
+const RELEASE_MARKER = '14';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -47,10 +47,18 @@ const PREVIEW_FADE_OUT_STEP = 0.08;
 // Player media mode state (audio artwork / video)
 let currentMediaMode = 'audio';
 let currentVideoUrl = '';
-const VIDEO_SOURCE_POOL = [
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-  'https://www.w3schools.com/html/mov_bbb.mp4'
+let currentVideoContent = 'visualizer'; // 'visualizer' | 'video' | 'youtube'
+
+const PIPED_INSTANCES = [
+  'pipedapi.kavin.rocks',
+  'pipedapi.tokhmi.xyz',
+  'pipedapi.moomoo.me',
+  'pipedapi.adminforge.de',
+  'api.piped.yt'
 ];
+const PIPED_TIMEOUT_MS = 4000;
+// songId → { videoId: string|null, searched: boolean }
+const videoSearchCache = {};
 
 const LRCLIB_API = 'https://lrclib.net/api/search';
 
@@ -565,17 +573,13 @@ function getSongVideoUrl(song) {
   if (!song) return '';
   if (song.videoUrl) return song.videoUrl;
   if (song.video) return song.video;
-  const h = stableHash(song.id || `${song.name || ''}${song.artists || ''}`);
-  // Only some songs get video mode so the UI shows two options conditionally.
-  if (h % 2 !== 0) return '';
-  return VIDEO_SOURCE_POOL[h % VIDEO_SOURCE_POOL.length];
+  return '';
 }
 
 function syncSongVideoTime() {
   const video = document.getElementById('song-video');
-  if (!video || !video.src || currentMediaMode !== 'video' || !audio.duration) return;
-  
-  // Sync video and audio playback times
+  if (!video || !video.src || currentMediaMode !== 'video' || currentVideoContent !== 'video' || !audio.duration) return;
+
   const timeDiff = Math.abs(video.currentTime - audio.currentTime);
   if (timeDiff > 0.35) {
     try {
@@ -593,6 +597,7 @@ function switchToAudioMode() {
   const art = document.getElementById('album-art');
   const videoWrap = document.getElementById('song-video-container');
   const video = document.getElementById('song-video');
+  const ytFrame = document.getElementById('yt-iframe');
   audioBtn?.classList.add('active');
   videoBtn?.classList.remove('active');
   audioBtn?.setAttribute('aria-selected', 'true');
@@ -600,78 +605,189 @@ function switchToAudioMode() {
   art?.classList.remove('hidden');
   videoWrap?.classList.add('hidden');
   if (video) video.pause();
+  // Clear YouTube iframe to stop playback and free bandwidth
+  if (ytFrame) { ytFrame.src = ''; ytFrame.classList.add('hidden'); }
 }
 
 function switchToVideoMode() {
-  if (!currentVideoUrl) {
-    showToast('Video mode is unavailable for this song');
-    return;
-  }
   currentMediaMode = 'video';
-  const audioBtn = document.getElementById('media-audio-btn');
-  const videoBtn = document.getElementById('media-video-btn');
-  const art = document.getElementById('album-art');
-  const videoWrap = document.getElementById('song-video-container');
-  const video = document.getElementById('song-video');
+  const audioBtn   = document.getElementById('media-audio-btn');
+  const videoBtn   = document.getElementById('media-video-btn');
+  const art        = document.getElementById('album-art');
+  const videoWrap  = document.getElementById('song-video-container');
+  const video      = document.getElementById('song-video');
+  const visualizer = document.getElementById('song-visualizer');
+  const ytFrame    = document.getElementById('yt-iframe');
+  const badge      = document.getElementById('video-mode-badge');
+
   audioBtn?.classList.remove('active');
   videoBtn?.classList.add('active');
   audioBtn?.setAttribute('aria-selected', 'false');
   videoBtn?.setAttribute('aria-selected', 'true');
   art?.classList.add('hidden');
   videoWrap?.classList.remove('hidden');
-  if (video) {
-    video.muted = true; // Ensure muted
+
+  if (currentVideoContent === 'video' && video && currentVideoUrl) {
+    // Direct mp4 video
+    video.classList.remove('hidden');
+    visualizer?.classList.add('hidden');
+    ytFrame?.classList.add('hidden');
+    video.muted = true;
     syncSongVideoTime();
     if (!audio.paused) {
       video.play().catch(() => {
-        console.warn('Video play failed, staying in audio mode');
-        switchToAudioMode();
+        currentVideoContent = 'visualizer';
+        video.classList.add('hidden');
+        visualizer?.classList.remove('hidden');
+        if (badge) badge.textContent = 'CANVAS';
       });
     }
+  } else if (currentVideoContent === 'youtube') {
+    // YouTube iframe — videoId is in cache
+    const cached = videoSearchCache[currentSong?.id];
+    if (cached?.videoId) {
+      _activateYouTubeIframe(cached.videoId);
+    } else {
+      currentVideoContent = 'visualizer';
+      video?.classList.add('hidden');
+      ytFrame?.classList.add('hidden');
+      visualizer?.classList.remove('hidden');
+      if (badge) badge.textContent = 'CANVAS';
+    }
+  } else {
+    // Canvas visualizer (default / Piped still searching / no result found)
+    video?.classList.add('hidden');
+    ytFrame?.classList.add('hidden');
+    visualizer?.classList.remove('hidden');
   }
 }
 
+function _activateYouTubeIframe(videoId) {
+  const ytFrame    = document.getElementById('yt-iframe');
+  const visualizer = document.getElementById('song-visualizer');
+  const video      = document.getElementById('song-video');
+  const badge      = document.getElementById('video-mode-badge');
+  if (!ytFrame) return;
+  ytFrame.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&loop=1&playlist=${videoId}&playsinline=1&rel=0`;
+  ytFrame.classList.remove('hidden');
+  visualizer?.classList.add('hidden');
+  video?.classList.add('hidden');
+  currentVideoContent = 'youtube';
+  if (badge) badge.textContent = 'YOUTUBE';
+}
+
+async function fetchYouTubeVideoId(song) {
+  if (!song?.id) return null;
+  const cached = videoSearchCache[song.id];
+  if (cached?.searched) return cached.videoId;
+  // Mark in-progress to prevent duplicate concurrent fetches
+  videoSearchCache[song.id] = { videoId: null, searched: false };
+
+  const songName    = decodeHtml(song.name || '');
+  const album       = decodeHtml(song.album || '');
+  const firstArtist = decodeHtml((song.artists || '').split(',')[0].trim());
+  const queries = [
+    `${songName} ${album} official video`,
+    `${songName} ${firstArtist}`
+  ];
+
+  for (const query of queries) {
+    for (const instance of PIPED_INSTANCES) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), PIPED_TIMEOUT_MS);
+        let data;
+        try {
+          const res = await fetch(
+            `https://${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
+            { signal: controller.signal }
+          );
+          clearTimeout(timer);
+          if (!res.ok) continue;
+          data = await res.json();
+        } catch (e) { clearTimeout(timer); continue; }
+
+        const first = Array.isArray(data?.items) ? data.items[0] : null;
+        if (!first?.url) continue;
+        const videoId = String(first.url).replace('/watch?v=', '').trim();
+        if (!videoId) continue;
+
+        videoSearchCache[song.id] = { videoId, searched: true };
+        return videoId;
+      } catch (e) { continue; }
+    }
+  }
+
+  videoSearchCache[song.id] = { videoId: null, searched: true };
+  return null;
+}
+
 function setupSongMedia(song) {
-  const switchEl = document.getElementById('media-switch');
-  const videoBtn = document.getElementById('media-video-btn');
-  const video = document.getElementById('song-video');
+  const switchEl   = document.getElementById('media-switch');
+  const video      = document.getElementById('song-video');
+  const visualizer = document.getElementById('song-visualizer');
+  const vizBg      = document.getElementById('visualizer-bg');
+  const vizArt     = document.getElementById('visualizer-art');
+  const badge      = document.getElementById('video-mode-badge');
+  const ytFrame    = document.getElementById('yt-iframe');
 
   currentVideoUrl = getSongVideoUrl(song);
+  currentVideoContent = currentVideoUrl ? 'video' : 'visualizer';
   currentMediaMode = 'audio';
-  switchToAudioMode();
+  switchToAudioMode(); // also clears ytFrame via the updated switchToAudioMode
+
+  // Always show the media switch — every song supports video mode
+  switchEl?.classList.remove('hidden');
+
+  // Update the canvas visualizer with this song's album art
+  const imgUrl = song?.image || '';
+  if (vizBg) vizBg.style.backgroundImage = imgUrl ? `url('${imgUrl}')` : '';
+  if (vizArt) { vizArt.src = imgUrl; vizArt.style.display = imgUrl ? 'block' : 'none'; }
+
+  // Reset badge
+  if (badge) badge.textContent = currentVideoContent === 'video' ? 'MUSIC VIDEO' : 'CANVAS';
 
   if (!video) return;
 
-  // Reset video element before setting new src
-  try {
-    video.pause();
-    video.currentTime = 0;
-  } catch (e) {
-    console.warn('Video reset failed:', e);
-  }
+  // Reset video element
+  try { video.pause(); video.currentTime = 0; } catch (e) {}
 
-  if (!currentVideoUrl) {
-    switchEl?.classList.add('hidden');
-    videoBtn?.classList.add('hidden');
+  if (currentVideoUrl) {
+    video.src = currentVideoUrl;
+    video.muted = true;
+    video.onloadedmetadata = () => {
+      if (audio.currentTime > 0) {
+        try { video.currentTime = audio.currentTime; } catch (e) {}
+      }
+    };
+    video.onerror = () => {
+      currentVideoContent = 'visualizer';
+      if (badge) badge.textContent = 'CANVAS';
+      if (currentMediaMode === 'video') {
+        video.classList.add('hidden');
+        visualizer?.classList.remove('hidden');
+        ytFrame?.classList.add('hidden');
+      }
+    };
+  } else {
     video.removeAttribute('src');
     video.load();
-    return;
   }
 
-  switchEl?.classList.remove('hidden');
-  videoBtn?.classList.remove('hidden');
-  video.src = currentVideoUrl;
-  video.muted = true; // Ensure only audio plays, not video audio
-  video.onloadedmetadata = () => {
-    // Video ready — sync time with audio
-    if (audio.currentTime > 0) {
-      try { video.currentTime = audio.currentTime; } catch (e) {}
+  // Background Piped API search — non-blocking, upgrades CANVAS → YOUTUBE when found
+  const songIdAtSearch = song.id;
+  fetchYouTubeVideoId(song).then(videoId => {
+    // Guard: user may have changed songs while the fetch was in progress
+    if (!currentSong || currentSong.id !== songIdAtSearch) return;
+    // Don't overwrite a direct mp4 video URL
+    if (currentVideoContent === 'video') return;
+    if (videoId) {
+      currentVideoContent = 'youtube';
+      if (badge) badge.textContent = 'YOUTUBE';
+      // If user is already watching in video mode, upgrade to iframe immediately
+      if (currentMediaMode === 'video') _activateYouTubeIframe(videoId);
     }
-  };
-  video.onerror = () => {
-    switchToAudioMode();
-    showToast('Video failed to load for this song');
-  };
+  }).catch(() => {});
 }
 
 function playByEra(era) {
@@ -987,7 +1103,7 @@ audio.addEventListener('pause', () => {
 audio.addEventListener('play', () => {
   isPlaying = true; updatePlayBtn();
   document.querySelector('.album-art-container')?.classList.add('playing');
-  if (currentMediaMode === 'video') {
+  if (currentMediaMode === 'video' && currentVideoContent === 'video') {
     const video = document.getElementById('song-video');
     syncSongVideoTime();
     video?.play().catch(() => {});
@@ -995,18 +1111,16 @@ audio.addEventListener('play', () => {
   if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing';
 });
 
-// Video element event listeners for sync
+// Video element event listeners for sync (only for real music video content)
 const video = document.getElementById('song-video');
 if (video) {
   video.addEventListener('timeupdate', () => {
-    // Catch video drift and resync
-    if (currentMediaMode === 'video' && Math.abs(video.currentTime - audio.currentTime) > 0.5) {
+    if (currentMediaMode === 'video' && currentVideoContent === 'video' && Math.abs(video.currentTime - audio.currentTime) > 0.5) {
       try { video.currentTime = audio.currentTime; } catch (e) {}
     }
   });
   video.addEventListener('play', () => {
-    // Ensure audio stays in sync
-    if (!audio.paused && Math.abs(video.currentTime - audio.currentTime) > 0.2) {
+    if (currentVideoContent === 'video' && !audio.paused && Math.abs(video.currentTime - audio.currentTime) > 0.2) {
       try { video.currentTime = audio.currentTime; } catch (e) {}
     }
   });

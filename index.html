@@ -155,8 +155,18 @@
             <div class="album-art-placeholder">🎵<br><span style="font-size:0.8rem;opacity:0.7">Tap play to start</span></div>
           </div>
           <div class="song-video-container hidden" id="song-video-container">
-            <video id="song-video" class="song-video" playsinline preload="metadata" muted loop></video>
-            <div class="video-mode-badge">VIDEO MODE</div>
+            <!-- Real music video (only shown when song.videoUrl is available) -->
+            <video id="song-video" class="song-video hidden" playsinline preload="metadata" muted loop></video>
+            <!-- YouTube iframe: loaded via Piped API proxy, muted visuals-only -->
+            <iframe id="yt-iframe" class="yt-iframe hidden" frameborder="0"
+              allow="autoplay; encrypted-media" allowfullscreen title="Music video"></iframe>
+            <!-- Canvas visualizer: Spotify Canvas-style animated album art -->
+            <div class="song-visualizer" id="song-visualizer">
+              <div class="visualizer-bg" id="visualizer-bg"></div>
+              <img class="visualizer-art" id="visualizer-art" src="" alt="" />
+              <div class="visualizer-overlay"></div>
+            </div>
+            <div class="video-mode-badge" id="video-mode-badge">CANVAS</div>
           </div>
         </div>
         <div id="lyrics-panel" class="lyrics-panel hidden">
@@ -198,7 +208,7 @@
       <div class="page-scroll">
         <div class="home-header">
           <div class="home-greeting" id="home-greeting">Good evening</div>
-          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">13</span></div>
+          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">14</span></div>
         </div>
         <div class="home-section">
           <div class="home-search-shortcut" onclick="showPage('search')">

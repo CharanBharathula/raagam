@@ -266,11 +266,62 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
   width: 100%; height: 100%; object-fit: cover; display: block;
   background: #000;
 }
+.song-video.hidden { display: none !important; }
+.yt-iframe {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  border: 0; background: #000; border-radius: 16px;
+  z-index: 2; /* above visualizer, below badge */
+  pointer-events: none; /* prevent tap from navigating to youtube.com */
+}
+.yt-iframe.hidden { display: none !important; }
 .video-mode-badge {
   position: absolute; top: 10px; right: 10px;
   padding: 4px 10px; border-radius: 999px;
   background: rgba(0,0,0,0.58); border: 1px solid rgba(255,255,255,0.22);
-  font-size: 10px; letter-spacing: 1px; color: #fff;
+  font-size: 10px; letter-spacing: 1px; color: #fff; z-index: 3;
+  text-transform: uppercase; font-weight: 700;
+}
+
+/* Spotify Canvas-style visualizer */
+.song-visualizer {
+  position: absolute; inset: 0; border-radius: 16px; overflow: hidden;
+  background: #0a0a0a;
+}
+.song-visualizer.hidden { display: none; }
+.visualizer-bg {
+  position: absolute; inset: -30px;
+  background-size: cover; background-position: center;
+  filter: blur(28px) brightness(0.45) saturate(1.8);
+  transform: scale(1.15);
+  transition: background-image 0.4s ease;
+}
+.visualizer-art {
+  position: absolute;
+  width: 72%; height: 72%;
+  top: 14%; left: 14%;
+  object-fit: cover; border-radius: 12px;
+  box-shadow: 0 12px 48px rgba(0,0,0,0.72);
+  animation: ken-burns-viz 26s ease-in-out infinite alternate;
+}
+@keyframes ken-burns-viz {
+  0%   { transform: scale(1.0) translate(0%, 0%); }
+  25%  { transform: scale(1.045) translate(-1.2%, 0.8%); }
+  50%  { transform: scale(1.06) translate(0.8%, -1.2%); }
+  75%  { transform: scale(1.03) translate(-0.4%, 0.5%); }
+  100% { transform: scale(1.0) translate(0.3%, -0.3%); }
+}
+.visualizer-overlay {
+  position: absolute; inset: 0;
+  background:
+    radial-gradient(ellipse at 25% 25%, rgba(232,168,56,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse at 75% 75%, rgba(100,80,220,0.07) 0%, transparent 55%);
+  animation: viz-overlay-pulse 9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes viz-overlay-pulse {
+  from { opacity: 0.55; }
+  to   { opacity: 1.0; }
 }
 .album-art-placeholder {
   width: 100%; height: 100%; display: flex; flex-direction: column;
