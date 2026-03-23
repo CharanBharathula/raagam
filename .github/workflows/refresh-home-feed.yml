@@ -1,0 +1,35 @@
+name: Refresh Home Feed
+
+on:
+  schedule:
+    - cron: '15 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate dynamic home feed
+        run: node generate-home-feed.js
+
+      - name: Commit updated feed
+        run: |
+          git add data/home-feed.json
+          if git diff --cached --quiet; then
+            echo "No feed changes"
+            exit 0
+          fi
+          git -c user.name="github-actions[bot]" -c user.email="github-actions[bot]@users.noreply.github.com" commit -m "chore: refresh dynamic home feed"
+          git push

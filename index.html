@@ -144,7 +144,12 @@
         <div class="player-top-actions">
           <button class="icon-btn" onclick="showPage('home')"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>
           <div class="player-top-label">NOW PLAYING</div>
-          <button class="icon-btn" id="lyrics-toggle" onclick="toggleLyrics()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h12"/></svg></button>
+          <div class="top-action-group">
+            <button class="icon-btn voice-mode-btn" id="voice-mode-btn" onclick="cycleVoiceMode()" title="Voice mode: Normal" aria-label="Cycle voice mode">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h2"/><path d="M8 9v6"/><path d="M12 7v10"/><path d="M16 9v6"/><path d="M20 12h0"/></svg>
+            </button>
+            <button class="icon-btn" id="lyrics-toggle" onclick="toggleLyrics()"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h12"/></svg></button>
+          </div>
         </div>
         <div class="media-switch hidden" id="media-switch" role="tablist" aria-label="Playback mode">
           <button class="media-switch-btn active" id="media-audio-btn" onclick="switchToAudioMode()" role="tab" aria-selected="true">Audio</button>
@@ -159,7 +164,7 @@
             <video id="song-video" class="song-video hidden" playsinline preload="metadata" muted loop></video>
             <!-- YouTube iframe: loaded via Piped API proxy, muted visuals-only -->
             <iframe id="yt-iframe" class="yt-iframe hidden" frameborder="0"
-              allow="autoplay; encrypted-media" allowfullscreen title="Music video"></iframe>
+              allow="autoplay; encrypted-media" title="Music video" tabindex="-1" aria-hidden="true"></iframe>
             <!-- Canvas visualizer: Spotify Canvas-style animated album art -->
             <div class="song-visualizer" id="song-visualizer">
               <div class="visualizer-bg" id="visualizer-bg"></div>
@@ -194,13 +199,10 @@
           <button onclick="clearEraLock()" class="era-lock-clear">&times;</button>
         </div>
         <div class="controls">
-          <button class="ctrl-btn shuffle-btn" id="shuffle-btn" onclick="toggleShuffle()"><svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M10.59 9.17L5.41 4 4 5.41l5.17 5.17 1.42-1.41zM14.5 4l2.04 2.04L4 18.59 5.41 20 17.96 7.46 20 9.5V4h-5.5zm.33 9.41l-1.41 1.41 3.13 3.13L14.5 20H20v-5.5l-2.04 2.04-3.13-3.13z"></path></svg></button>
+          <button class="ctrl-btn heart-btn-main" id="heart-btn"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="heart-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg></button>
           <button class="ctrl-btn" id="prev-btn"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"></path></svg></button>
           <button class="ctrl-btn play-btn" id="play-btn"><svg width="34" height="34" viewBox="0 0 24 24" fill="currentColor" class="play-icon"><path d="M8 5v14l11-7z"></path></svg></button>
           <button class="ctrl-btn" id="next-btn"><svg width="30" height="30" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"></path></svg></button>
-          <button class="ctrl-btn heart-btn-main" id="heart-btn"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="heart-icon"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg></button>
-        </div>
-        <div class="player-utility-actions">
           <button class="ctrl-btn download-btn" id="download-btn" title="Download for offline"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></button>
         </div>
         <div id="loading" class="loading" style="display:none"><div class="spinner"></div></div>
@@ -212,7 +214,7 @@
       <div class="page-scroll">
         <div class="home-header">
           <div class="home-greeting" id="home-greeting">Good evening</div>
-          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">23</span></div>
+          <div class="home-logo">RAAGAM <span class="release-marker" id="release-marker">25</span></div>
         </div>
         <div class="home-section">
           <div class="home-search-shortcut" onclick="showPage('search')">
@@ -244,6 +246,18 @@
         <div class="home-section">
           <h3>📊 Your Stats</h3>
           <div class="home-stats"><div class="mini-stat"><span class="mini-stat-num" id="stat-songs">0</span> songs available</div></div>
+        </div>
+        <div class="home-section">
+          <h3>🆕 New Telugu Releases</h3>
+          <div id="home-telugu-new" class="home-shelf-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>🏆 Telugu Top 50</h3>
+          <div id="home-telugu-top" class="home-shelf-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>🎤 Popular Telugu Collections</h3>
+          <div id="home-telugu-collections" class="home-collection-grid"></div>
         </div>
       </div>
     </div>
@@ -371,7 +385,7 @@
       <div class="page-scroll">
         <div class="home-header">
           <div class="home-greeting">🎬 Bollywood</div>
-          <div class="home-logo">RAAGAM</div>
+          <div class="home-logo">RAAGAM <span class="release-marker">25</span></div>
         </div>
         <div class="home-section">
           <h3>🎲 Random Bollywood</h3>
@@ -383,6 +397,18 @@
         <div class="home-section">
           <h3>Browse Categories</h3>
           <div id="bollywood-categories" class="bw-categories-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>🆕 New Bollywood Releases</h3>
+          <div id="home-hindi-new" class="home-shelf-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>🏆 Bollywood Top 50</h3>
+          <div id="home-hindi-top" class="home-shelf-grid"></div>
+        </div>
+        <div class="home-section">
+          <h3>🌟 Popular Bollywood Collections</h3>
+          <div id="home-hindi-collections" class="home-collection-grid"></div>
         </div>
       </div>
     </div>
@@ -401,9 +427,9 @@
   <script src="songs-db.js"></script>
   <script src="bollywood-songs-db.js"></script>
   <script src="ai-engine.js"></script>
-  <script src="app.js?v=24"></script>
+  <script src="app.js?v=25"></script>
 <script>
-const RELEASE_STATIC = '24';
+const RELEASE_STATIC = '25';
 (async () => {
   try {
     const markerEl = document.getElementById('release-marker');
