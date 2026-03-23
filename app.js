@@ -56,7 +56,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '31';
+const RELEASE_MARKER = '32';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -105,6 +105,8 @@ let currentVideoUrl = '';
 let currentVideoContent = 'visualizer'; // 'visualizer' | 'video' | 'youtube'
 let ytPrewarmed = false; // true when yt-iframe is silently pre-buffering with mute=1
 let pendingVideoSearch = null; // Promise for the current song's video ID search
+let pendingVideoSearchSongId = null;
+let pendingVideoSearchStartedAt = 0;
 let lastYouTubeSyncAt = 0;
 
 const PIPED_INSTANCES = [
@@ -124,7 +126,8 @@ const INVIDIOUS_INSTANCES = [
   'invidious.fdn.fr',
   'yewtu.be'
 ];
-const PIPED_TIMEOUT_MS = IS_MOBILE ? 4200 : 5200;
+const PIPED_TIMEOUT_MS = IS_MOBILE ? 3000 : 4200;
+const VIDEO_SEARCH_STALE_MS = IS_MOBILE ? 7000 : 9000;
 let youtubeApiQuotaExhausted = false;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
@@ -322,6 +325,45 @@ function shouldShowVideoSwitch(song, directVideoUrl, cachedVideoId) {
   if (!state) return true;
   if (!state.searched) return true;
   return !!state.videoId;
+}
+
+function clearPendingVideoSearchState() {
+  pendingVideoSearch = null;
+  pendingVideoSearchSongId = null;
+  pendingVideoSearchStartedAt = 0;
+}
+
+function ensureVideoSearch(song) {
+  if (!song?.id) return null;
+
+  if (currentVideoContent === 'video' || currentVideoContent === 'youtube') return pendingVideoSearch;
+
+  const now = Date.now();
+  const sameSongPending = pendingVideoSearch && pendingVideoSearchSongId === song.id;
+  const isFresh = sameSongPending && (now - pendingVideoSearchStartedAt) < VIDEO_SEARCH_STALE_MS;
+  if (isFresh) return pendingVideoSearch;
+
+  pendingVideoSearchSongId = song.id;
+  pendingVideoSearchStartedAt = now;
+  pendingVideoSearch = fetchYouTubeVideoId(song)
+    .then(videoId => {
+      if (!currentSong || currentSong.id !== song.id) return videoId;
+      if (videoId) {
+        currentVideoContent = 'youtube';
+        updateVideoAvailability(true);
+      } else {
+        updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, null));
+      }
+      return videoId;
+    })
+    .catch(() => null)
+    .finally(() => {
+      if (pendingVideoSearchSongId === song.id) {
+        clearPendingVideoSearchState();
+      }
+    });
+
+  return pendingVideoSearch;
 }
 
 function syncYouTubeTime(force = false) {
@@ -1416,28 +1458,7 @@ function switchToAudioMode() {
 
 function switchToVideoMode() {
   if (!currentSong) return;
-  if (currentVideoContent !== 'video' && currentVideoContent !== 'youtube' && !pendingVideoSearch) {
-    const songAtSearch = currentSong.id;
-    pendingVideoSearch = fetchYouTubeVideoId(currentSong);
-    pendingVideoSearch.then(videoId => {
-      if (!currentSong || currentSong.id !== songAtSearch) return;
-      if (videoId) {
-        currentVideoContent = 'youtube';
-        updateVideoAvailability(true);
-        if (currentMediaMode === 'video') {
-          _activateYouTubeIframe(videoId, audio.currentTime);
-        } else {
-          _prewarmYouTubeIframe(videoId);
-        }
-      } else {
-        updateVideoAvailability(shouldShowVideoSwitch(currentSong, currentVideoUrl, null));
-        if (currentMediaMode === 'video') showToast('YouTube video not available for this song');
-      }
-    }).catch(() => {
-      if (!currentSong || currentSong.id !== songAtSearch) return;
-      if (currentMediaMode === 'video') showToast('Video search failed, try again');
-    });
-  }
+  ensureVideoSearch(currentSong);
 
   currentMediaMode = 'video';
   const audioBtn   = document.getElementById('media-audio-btn');
@@ -1493,9 +1514,10 @@ function switchToVideoMode() {
     if (badge) badge.textContent = 'SEARCHING...';
 
     // If there's a pending search, wait for it and activate immediately
-    if (pendingVideoSearch) {
+    const waitSearch = ensureVideoSearch(currentSong);
+    if (waitSearch) {
       const songIdAtSwitch = currentSong?.id;
-      pendingVideoSearch.then(videoId => {
+      waitSearch.then(videoId => {
         // Only activate if user is still on the same song and still in video mode
         if (!currentSong || currentSong.id !== songIdAtSwitch) return;
         if (currentMediaMode !== 'video') return;
@@ -1579,7 +1601,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 
 async function _fetchFromInnerTube(query, limit = 8) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 4200 : 5200);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
   try {
     const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
       method: 'POST',
@@ -1617,7 +1639,7 @@ async function _fetchFromYouTubeAPI(query, limit = 8) {
   if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=${limit}&key=${YOUTUBE_API_KEY}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 4200 : 5200);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
@@ -1750,6 +1772,20 @@ async function fetchYouTubeVideoId(song) {
 
   const queries = buildVideoSearchQueries(song);
 
+  // Fast path first: YouTube Data API only. This was previously the most reliable path.
+  for (const query of queries) {
+    try {
+      const apiCandidates = await _fetchFromYouTubeAPI(query, 8);
+      const apiVideoId = pickVideoIdFromCandidates(song, apiCandidates, 0.3)
+        || fallbackVideoIdFromCandidates(song, apiCandidates);
+      if (apiVideoId) {
+        videoSearchCache[song.id] = { videoId: apiVideoId, searched: true };
+        _cacheVideoId(song.id, apiVideoId);
+        return apiVideoId;
+      }
+    } catch { /* continue to richer search fallback */ }
+  }
+
   for (const query of queries) {
     // Try InnerTube + YouTube API in parallel.
     try {
@@ -1810,6 +1846,8 @@ function setupSongMedia(song) {
   const vizArt     = document.getElementById('visualizer-art');
   const badge      = document.getElementById('video-mode-badge');
   const ytFrame    = document.getElementById('yt-iframe');
+
+  clearPendingVideoSearchState();
 
   currentVideoUrl = getSongVideoUrl(song);
   currentVideoContent = currentVideoUrl ? 'video' : 'visualizer';
@@ -1879,8 +1917,8 @@ function setupSongMedia(song) {
 
   // Background search (always runs, upgrades CANVAS → YOUTUBE when found)
   const songIdAtSearch = song.id;
-  pendingVideoSearch = fetchYouTubeVideoId(song);
-  pendingVideoSearch.then(videoId => {
+  ensureVideoSearch(song);
+  if (pendingVideoSearch) pendingVideoSearch.then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
 
