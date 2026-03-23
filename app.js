@@ -23,6 +23,11 @@ let audioSourceNode = null;
 let graphReady = false;
 let directGainNode = null;
 let vocalCutGainNode = null;
+let vocalNotchNode = null;
+let vocalCutNode = null;
+let vocalLowPassNode = null;
+let vocalPathConnected = false;
+let vocalDisconnectTimer = null;
 let mediaUnlocked = false;
 let voiceGraphUnavailable = false;
 
@@ -262,24 +267,25 @@ function ensureAudioGraph() {
     directGainNode = audioCtx.createGain();
     vocalCutGainNode = audioCtx.createGain();
 
-    const splitter = audioCtx.createChannelSplitter(2);
-    const mergerDiff = audioCtx.createChannelMerger(2);
-    const invert = audioCtx.createGain();
-    invert.gain.value = -1;
+    // Lightweight vocal-hide chain (lower CPU than full mid/side graph)
+    vocalNotchNode = audioCtx.createBiquadFilter();
+    vocalNotchNode.type = 'notch';
+    vocalNotchNode.frequency.value = 1500;
+    vocalNotchNode.Q.value = 1.1;
 
-    audioSourceNode.connect(splitter);
+    vocalCutNode = audioCtx.createBiquadFilter();
+    vocalCutNode.type = 'peaking';
+    vocalCutNode.frequency.value = 2200;
+    vocalCutNode.Q.value = 0.9;
+    vocalCutNode.gain.value = -15;
 
-    // Mid-side style vocal suppression: (L - R)
-    splitter.connect(mergerDiff, 0, 0);
-    splitter.connect(invert, 1);
-    invert.connect(mergerDiff, 0, 0);
-
-    splitter.connect(mergerDiff, 1, 1);
-    splitter.connect(invert, 0);
-    invert.connect(mergerDiff, 0, 1);
+    vocalLowPassNode = audioCtx.createBiquadFilter();
+    vocalLowPassNode.type = 'lowpass';
+    vocalLowPassNode.frequency.value = 8200;
+    vocalLowPassNode.Q.value = 0.65;
 
     audioSourceNode.connect(directGainNode);
-    mergerDiff.connect(vocalCutGainNode);
+    vocalCutGainNode.gain.value = 0;
 
     directGainNode.connect(audioCtx.destination);
     vocalCutGainNode.connect(audioCtx.destination);
@@ -296,14 +302,50 @@ function ensureAudioGraph() {
   }
 }
 
+function connectVocalPath() {
+  if (!graphReady || vocalPathConnected || !audioSourceNode || !vocalNotchNode || !vocalCutNode || !vocalLowPassNode || !vocalCutGainNode) {
+    return;
+  }
+  try {
+    audioSourceNode.connect(vocalNotchNode);
+    vocalNotchNode.connect(vocalCutNode);
+    vocalCutNode.connect(vocalLowPassNode);
+    vocalLowPassNode.connect(vocalCutGainNode);
+    vocalPathConnected = true;
+  } catch (e) {
+    voiceGraphUnavailable = true;
+  }
+}
+
+function disconnectVocalPath() {
+  if (!graphReady || !vocalPathConnected) return;
+  try { audioSourceNode.disconnect(vocalNotchNode); } catch (e) {}
+  try { vocalNotchNode.disconnect(vocalCutNode); } catch (e) {}
+  try { vocalCutNode.disconnect(vocalLowPassNode); } catch (e) {}
+  try { vocalLowPassNode.disconnect(vocalCutGainNode); } catch (e) {}
+  vocalPathConnected = false;
+}
+
 function applyVoiceMode() {
   if (!graphReady) return;
+  const now = audioCtx ? audioCtx.currentTime : 0;
+
   if (voiceMode === 'vocal') {
-    directGainNode.gain.value = 0;
-    vocalCutGainNode.gain.value = 1;
+    if (vocalDisconnectTimer) {
+      clearTimeout(vocalDisconnectTimer);
+      vocalDisconnectTimer = null;
+    }
+    connectVocalPath();
+    directGainNode.gain.setTargetAtTime(0, now, 0.035);
+    vocalCutGainNode.gain.setTargetAtTime(1, now, 0.035);
   } else {
-    directGainNode.gain.value = 1;
-    vocalCutGainNode.gain.value = 0;
+    directGainNode.gain.setTargetAtTime(1, now, 0.03);
+    vocalCutGainNode.gain.setTargetAtTime(0, now, 0.03);
+    if (vocalDisconnectTimer) clearTimeout(vocalDisconnectTimer);
+    vocalDisconnectTimer = setTimeout(() => {
+      if (voiceMode === 'normal') disconnectVocalPath();
+      vocalDisconnectTimer = null;
+    }, 180);
   }
 }
 
