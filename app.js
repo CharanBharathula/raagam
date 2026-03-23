@@ -16,7 +16,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '16';
+const RELEASE_MARKER = '17';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -777,6 +777,22 @@ async function _fetchFromInvidious(instance, query) {
   } catch (e) { clearTimeout(t); throw e; }
 }
 
+async function _fetchFromCORSProxy(query) {
+  const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(ytUrl)}`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(proxyUrl, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) throw new Error('bad');
+    const html = await res.text();
+    const match = html.match(/"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/);
+    if (!match?.[1]) throw new Error('no id');
+    return match[1];
+  } catch (e) { clearTimeout(t); throw e; }
+}
+
 async function fetchYouTubeVideoId(song) {
   if (!song?.id) return null;
   const cached = videoSearchCache[song.id];
@@ -792,8 +808,9 @@ async function fetchYouTubeVideoId(song) {
   ];
 
   for (const query of queries) {
-    // Race ALL Piped + Invidious instances simultaneously — fastest wins
+    // Race CORS proxy + all Piped + Invidious instances simultaneously — fastest wins
     const allFetches = [
+      _fetchFromCORSProxy(query),
       ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query)),
       ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query))
     ];
