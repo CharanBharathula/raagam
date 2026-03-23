@@ -56,7 +56,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '30';
+const RELEASE_MARKER = '31';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -124,7 +124,7 @@ const INVIDIOUS_INSTANCES = [
   'invidious.fdn.fr',
   'yewtu.be'
 ];
-const PIPED_TIMEOUT_MS = IS_MOBILE ? 2600 : 4200;
+const PIPED_TIMEOUT_MS = IS_MOBILE ? 4200 : 5200;
 let youtubeApiQuotaExhausted = false;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
@@ -172,19 +172,46 @@ function getSongArtistSeed(song) {
   return decodeHtml((song?.artists || '').split(',')[0] || '').trim();
 }
 
+function compactSearchPhrase(value) {
+  return decodeHtml(String(value || ''))
+    .replace(/\[[^\]]*\]|\([^\)]*\)|\{[^\}]*\}/g, ' ')
+    .replace(/\b(feat|ft|featuring|official|video|lyrical|lyrics|audio|full|song)\b/gi, ' ')
+    .replace(/[|:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function buildVideoSearchQueries(song) {
-  const name = decodeHtml(song?.name || '').trim();
-  const album = decodeHtml(song?.album || '').trim();
-  const artist = getSongArtistSeed(song);
+  const nameRaw = decodeHtml(song?.name || '').trim();
+  const name = compactSearchPhrase(nameRaw) || nameRaw;
+  const albumRaw = decodeHtml(song?.album || '').trim();
+  const album = compactSearchPhrase(albumRaw) || albumRaw;
+  const artistRaw = getSongArtistSeed(song);
+  const artist = compactSearchPhrase(artistRaw) || artistRaw;
   const langHint = (song?.language || '').toLowerCase() === 'hindi' ? 'hindi' : 'telugu';
-  return [
+  const queries = [
     `${name} ${artist} official video`,
+    `${name} ${artist} full video song`,
     `${name} ${artist} ${album} video`,
+    `${name} ${artist} lyrical video`,
     `${name} ${artist} ${langHint} movie song`,
     `${name} ${langHint} song video`,
+    `${name} ${album} song`,
     `${name} ${artist} song`,
     `${name} official song`
   ];
+
+  const seen = new Set();
+  const deduped = [];
+  for (const query of queries) {
+    const text = String(query || '').replace(/\s+/g, ' ').trim();
+    const key = normalizeForMatch(text);
+    if (!text || text.length < 5 || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(text);
+  }
+
+  return deduped.slice(0, 10);
 }
 
 function scoreYouTubeCandidate(song, candidate) {
@@ -203,9 +230,12 @@ function scoreYouTubeCandidate(song, candidate) {
   let score = titleMatch * 0.62 + artistMatch * 0.3 + albumMatch * 0.08;
 
   if (/karaoke|cover|remix|nightcore|sped up|slowed|instrumental|dj/i.test(titleNorm)) score -= 0.35;
-  if (/teaser|trailer|reaction|review|status|shorts/i.test(titleNorm)) score -= 0.25;
+  if (/teaser|trailer|reaction|review|status|shorts|whatsapp/i.test(titleNorm)) score -= 0.28;
   if (/scene|bgm|theme|trending|teaser|promo/i.test(titleNorm)) score -= 0.18;
   if (/official|video|4k|hd|lyrics?/i.test(titleNorm)) score += 0.08;
+
+  if (titleMatch < 0.35) score -= 0.18;
+  if (titleMatch > 0.75) score += 0.12;
 
   const songTitleNorm = normalizeForMatch(song?.name || '');
   const artistNorm = normalizeForMatch(getSongArtistSeed(song));
@@ -248,8 +278,21 @@ function pickVideoIdFromCandidates(song, candidates, minScore = 0.34) {
 }
 
 function fallbackVideoIdFromCandidates(song, candidates) {
-  const nameNorm = normalizeForMatch(song?.name || '');
-  const artistNorm = normalizeForMatch(getSongArtistSeed(song));
+  let best = null;
+  const validCandidates = (candidates || []).filter(c => String(c?.videoId || '').trim().length === 11);
+  for (const candidate of validCandidates) {
+    const titleNorm = normalizeForMatch(candidate?.title || '');
+    if (/reaction|review|status|shorts/i.test(titleNorm)) continue;
+    const score = scoreYouTubeCandidate(song, candidate);
+    if (!best || score > best.score) {
+      best = { videoId: candidate.videoId, score };
+    }
+  }
+
+  if (best && best.score >= -0.2) return best.videoId;
+
+  const nameNorm = normalizeForMatch(compactSearchPhrase(song?.name || '') || song?.name || '');
+  const artistNorm = normalizeForMatch(compactSearchPhrase(getSongArtistSeed(song)) || getSongArtistSeed(song));
   for (const candidate of candidates || []) {
     const id = String(candidate?.videoId || '').trim();
     if (id.length !== 11) continue;
@@ -270,6 +313,15 @@ function updateVideoAvailability(hasVideo) {
   if (!hasVideo && currentMediaMode === 'video') {
     switchToAudioMode();
   }
+}
+
+function shouldShowVideoSwitch(song, directVideoUrl, cachedVideoId) {
+  if (directVideoUrl || cachedVideoId) return true;
+  if (!song?.id) return false;
+  const state = videoSearchCache[song.id];
+  if (!state) return true;
+  if (!state.searched) return true;
+  return !!state.videoId;
 }
 
 function syncYouTubeTime(force = false) {
@@ -1364,9 +1416,27 @@ function switchToAudioMode() {
 
 function switchToVideoMode() {
   if (!currentSong) return;
-  if (currentVideoContent !== 'video' && currentVideoContent !== 'youtube') {
-    showToast('Video not available for this song');
-    return;
+  if (currentVideoContent !== 'video' && currentVideoContent !== 'youtube' && !pendingVideoSearch) {
+    const songAtSearch = currentSong.id;
+    pendingVideoSearch = fetchYouTubeVideoId(currentSong);
+    pendingVideoSearch.then(videoId => {
+      if (!currentSong || currentSong.id !== songAtSearch) return;
+      if (videoId) {
+        currentVideoContent = 'youtube';
+        updateVideoAvailability(true);
+        if (currentMediaMode === 'video') {
+          _activateYouTubeIframe(videoId, audio.currentTime);
+        } else {
+          _prewarmYouTubeIframe(videoId);
+        }
+      } else {
+        updateVideoAvailability(shouldShowVideoSwitch(currentSong, currentVideoUrl, null));
+        if (currentMediaMode === 'video') showToast('YouTube video not available for this song');
+      }
+    }).catch(() => {
+      if (!currentSong || currentSong.id !== songAtSearch) return;
+      if (currentMediaMode === 'video') showToast('Video search failed, try again');
+    });
   }
 
   currentMediaMode = 'video';
@@ -1434,10 +1504,15 @@ function switchToVideoMode() {
           _activateYouTubeIframe(videoId, audio.currentTime);
         } else if (badge) {
           badge.textContent = 'CANVAS';
+          showToast('YouTube video not available for this song');
         }
       }).catch(() => {
         if (badge) badge.textContent = 'CANVAS';
+        showToast('Video search failed, try again');
       });
+    } else {
+      if (badge) badge.textContent = 'CANVAS';
+      showToast('YouTube video not available for this song');
     }
   }
 }
@@ -1504,7 +1579,7 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 
 async function _fetchFromInnerTube(query, limit = 8) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3800);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 4200 : 5200);
   try {
     const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
       method: 'POST',
@@ -1542,7 +1617,7 @@ async function _fetchFromYouTubeAPI(query, limit = 8) {
   if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=${limit}&key=${YOUTUBE_API_KEY}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
+  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 4200 : 5200);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(t);
@@ -1676,27 +1751,25 @@ async function fetchYouTubeVideoId(song) {
   const queries = buildVideoSearchQueries(song);
 
   for (const query of queries) {
-    // Try InnerTube first (no key needed, most reliable)
+    // Try InnerTube + YouTube API in parallel.
     try {
-      const candidates = await _fetchFromInnerTube(query, 8);
-      const videoId = pickVideoIdFromCandidates(song, candidates, 0.36);
-      if (videoId) {
-        videoSearchCache[song.id] = { videoId, searched: true };
-        _cacheVideoId(song.id, videoId);
-        return videoId;
-      }
-    } catch { /* InnerTube failed — try YouTube Data API */ }
+      const settled = await Promise.allSettled([
+        _fetchFromInnerTube(query, 8),
+        _fetchFromYouTubeAPI(query, 8)
+      ]);
+      const primaryCandidates = settled
+        .filter(entry => entry.status === 'fulfilled')
+        .flatMap(entry => Array.isArray(entry.value) ? entry.value : []);
 
-    // Try YouTube Data API (needs key, has quota)
-    try {
-      const candidates = await _fetchFromYouTubeAPI(query, 8);
-      const videoId = pickVideoIdFromCandidates(song, candidates, 0.36);
+      const videoId = pickVideoIdFromCandidates(song, primaryCandidates, 0.32)
+        || fallbackVideoIdFromCandidates(song, primaryCandidates);
+
       if (videoId) {
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
         return videoId;
       }
-    } catch { /* API unavailable or quota exhausted — fall through to proxies */ }
+    } catch { /* primary providers failed — fall through to proxies */ }
 
     // Fallback: gather candidates from public proxies, then score for best match
     const allFetches = [
@@ -1709,7 +1782,7 @@ async function fetchYouTubeVideoId(song) {
       const allCandidates = settled
         .filter(entry => entry.status === 'fulfilled')
         .flatMap(entry => Array.isArray(entry.value) ? entry.value : []);
-      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.22);
+      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.16);
       if (videoId) {
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
@@ -1725,7 +1798,7 @@ async function fetchYouTubeVideoId(song) {
     } catch { /* all instances failed, try next query */ }
   }
 
-  videoSearchCache[song.id] = { videoId: null, searched: true, retryAfter: Date.now() + 10 * 60 * 1000 };
+  videoSearchCache[song.id] = { videoId: null, searched: true, retryAfter: Date.now() + 3 * 60 * 1000 };
   return null;
 }
 
@@ -1753,7 +1826,7 @@ function setupSongMedia(song) {
   switchToAudioMode();
 
   // Only show media switch when a real video source exists.
-  updateVideoAvailability(!!currentVideoUrl || !!cachedVideoId);
+  updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, cachedVideoId));
 
   // Update the canvas visualizer with this song's album art
   const imgUrl = song?.image || '';
@@ -1822,10 +1895,10 @@ function setupSongMedia(song) {
         _prewarmYouTubeIframe(videoId);
       }
     } else {
-      updateVideoAvailability(!!currentVideoUrl || !!cachedVideoId);
+      updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, cachedVideoId));
     }
   }).catch(() => {
-    updateVideoAvailability(!!currentVideoUrl || !!cachedVideoId);
+    updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, cachedVideoId));
   });
 }
 
