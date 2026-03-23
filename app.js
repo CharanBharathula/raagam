@@ -11,12 +11,21 @@ let lyricsTimer = null;
 let shuffleOn = true;
 let activeLanguage = 'telugu';
 let consecutiveErrors = 0;
+
+// Smart shuffle state
+const DECADE_WEIGHTS = { '2020s': 30, '2010s': 25, '2000s': 20, '1990s': 15, '1980s': 8, 'pre1980': 2 };
+const RECENTLY_PLAYED_WINDOW = 200;
+const RECENT_ALBUM_WINDOW = 3;
+const MIN_SONG_DURATION = 60;
+let recentlyPlayedIds = new Set();
+let recentAlbums = [];
+let eraLock = null; // null = all decades, or '2020s', '2010s', etc.
 let currentUser = null;
 let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '22';
+const RELEASE_MARKER = '23';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 let hasShownCodecWarning = false;
 
@@ -61,11 +70,14 @@ const PIPED_INSTANCES = [
 ];
 const INVIDIOUS_INSTANCES = [
   'invidious.privacydev.net',
+  'vid.puffyan.us',
   'yt.artemislena.eu',
   'invidious.flokinet.to',
-  'inv.riverside.rocks'
+  'invidious.fdn.fr',
+  'yewtu.be'
 ];
 const PIPED_TIMEOUT_MS = 5000;
+let youtubeApiQuotaExhausted = false;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
 
@@ -526,13 +538,12 @@ if (navigator.serviceWorker) {
 function playRandomSong() {
   if (isLoadingNext) return;
   bollywoodCategoryPool = null;
-  activeLanguage = 'telugu'; // Home page random always plays Telugu
+  activeLanguage = 'telugu';
+  eraLock = null; // Clear era lock when explicitly playing random
+  updateEraLockBadge();
   const excludeId = currentSong ? currentSong.id : null;
   const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
-  let song = null;
-  if (typeof SongsDB !== 'undefined' && typeof SongsDB.getRandomSong === 'function') {
-    song = SongsDB.getRandomSong(excludeId);
-  }
+  let song = smartPickRandom(teluguDb, excludeId);
   if (!song) {
     song = pickRandomSongFromList(teluguDb, excludeId);
   }
@@ -569,6 +580,89 @@ function getRecentSongsSafe() {
   } catch (e) {
     return [];
   }
+}
+
+function _getDecadeKey(year) {
+  const y = parseInt(year);
+  if (isNaN(y)) return 'pre1980';
+  if (y >= 2020) return '2020s';
+  if (y >= 2010) return '2010s';
+  if (y >= 2000) return '2000s';
+  if (y >= 1990) return '1990s';
+  if (y >= 1980) return '1980s';
+  return 'pre1980';
+}
+
+function smartPickRandom(db, excludeId) {
+  if (!Array.isArray(db) || !db.length) return null;
+
+  // Filter: exclude recently played, recent albums, short songs
+  let pool = db.filter(s => {
+    if (!s || !s.id) return false;
+    if (s.id === excludeId) return false;
+    if (recentlyPlayedIds.has(s.id)) return false;
+    if (s.duration && s.duration < MIN_SONG_DURATION) return false;
+    if (recentAlbums.length > 0 && recentAlbums.includes(s.album)) return false;
+    return true;
+  });
+
+  // If pool too small after filtering, relax constraints
+  if (pool.length < 10) {
+    pool = db.filter(s => s && s.id && s.id !== excludeId && (!s.duration || s.duration >= MIN_SONG_DURATION));
+  }
+  if (!pool.length) return pickRandomSongFromList(db, excludeId);
+
+  // Era lock: restrict to locked decade
+  if (eraLock) {
+    const eraPool = pool.filter(s => _getDecadeKey(s.year) === eraLock);
+    if (eraPool.length > 0) pool = eraPool;
+  }
+
+  // Group by decade
+  const decades = {};
+  for (const s of pool) {
+    const dk = _getDecadeKey(s.year);
+    if (!decades[dk]) decades[dk] = [];
+    decades[dk].push(s);
+  }
+
+  // Weighted decade selection (skip decades with no songs in pool)
+  const available = Object.keys(decades);
+  if (!available.length) return pickRandomSongFromList(db, excludeId);
+
+  let totalWeight = 0;
+  const weighted = [];
+  for (const dk of available) {
+    const w = DECADE_WEIGHTS[dk] || 2;
+    totalWeight += w;
+    weighted.push({ decade: dk, weight: w });
+  }
+
+  let roll = Math.random() * totalWeight;
+  let selectedDecade = weighted[0].decade;
+  for (const entry of weighted) {
+    roll -= entry.weight;
+    if (roll <= 0) { selectedDecade = entry.decade; break; }
+  }
+
+  // Pick uniformly from selected decade
+  const decadePool = decades[selectedDecade];
+  const song = decadePool[Math.floor(Math.random() * decadePool.length)];
+
+  // Update anti-repetition state
+  if (song) {
+    recentlyPlayedIds.add(song.id);
+    if (recentlyPlayedIds.size > RECENTLY_PLAYED_WINDOW) {
+      const first = recentlyPlayedIds.values().next().value;
+      recentlyPlayedIds.delete(first);
+    }
+    if (song.album) {
+      recentAlbums.push(song.album);
+      if (recentAlbums.length > RECENT_ALBUM_WINDOW) recentAlbums.shift();
+    }
+  }
+
+  return song;
 }
 
 function stableHash(str) {
@@ -742,9 +836,26 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   }
 }
 
+async function _fetchFromYouTubeAPI(query) {
+  if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=1&key=${YOUTUBE_API_KEY}`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (res.status === 403) { youtubeApiQuotaExhausted = true; throw new Error('quota'); }
+    if (!res.ok) throw new Error('bad');
+    const data = await res.json();
+    const videoId = data.items?.[0]?.id?.videoId;
+    if (!videoId) throw new Error('not found');
+    return videoId;
+  } catch (e) { clearTimeout(t); throw e; }
+}
+
 async function _fetchFromPiped(instance, query) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for Piped
+  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS); // 3.5s timeout for Piped
   try {
     const res = await fetch(
       `https://${instance}/search?q=${encodeURIComponent(query)}&filter=videos`,
@@ -762,7 +873,7 @@ async function _fetchFromPiped(instance, query) {
 
 async function _fetchFromInvidious(instance, query) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for Invidious
+  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS); // 3.5s timeout for Invidious
   try {
     const res = await fetch(
       `https://${instance}/api/v1/search?q=${encodeURIComponent(query)}&type=video`,
@@ -781,7 +892,7 @@ async function _fetchFromCORSProxy(query) {
   const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
   const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(ytUrl)}`;
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 3500); // 3.5s timeout for scraper
+  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS); // 3.5s timeout for scraper
   try {
     const res = await fetch(proxyUrl, { signal: ctrl.signal });
     clearTimeout(t);
@@ -793,19 +904,33 @@ async function _fetchFromCORSProxy(query) {
   } catch (e) { clearTimeout(t); throw e; }
 }
 
+function _cacheVideoId(songId, videoId) {
+  try {
+    const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+    cache[songId] = videoId;
+    // LRU eviction: keep max 2000 entries
+    const keys = Object.keys(cache);
+    if (keys.length > 2000) {
+      keys.slice(0, keys.length - 2000).forEach(k => delete cache[k]);
+    }
+    localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
+  } catch (e) {}
+}
+
 async function fetchYouTubeVideoId(song) {
   // 0. Check if video URL/ID is already provided in the song object (DB override)
   if (song?.video) {
-    // Extract ID if full URL, or use as-is if already an ID
     const match = String(song.video).match(/(?:v=|youtu\.be\/|\/embed\/|\/v\/|shorts\/)([^#\&\?]*).*/);
     const videoId = match ? match[1] : song.video;
-    if (videoId && videoId.length > 5) return Promise.resolve(videoId);
+    if (videoId && videoId.length > 5) return videoId;
   }
 
-  // Check if the videoId is already cached for this song
+  // 1. Check persistent localStorage cache
   const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
-  if (cache[song?.id]) { return Promise.resolve(cache[song.id]); }
+  if (cache[song?.id]) return cache[song.id];
   if (!song?.id) return null;
+
+  // 2. Check in-memory session cache
   const cached = videoSearchCache[song.id];
   if (cached?.searched) return cached.videoId;
   videoSearchCache[song.id] = { videoId: null, searched: false };
@@ -819,7 +944,17 @@ async function fetchYouTubeVideoId(song) {
   ];
 
   for (const query of queries) {
-    // Race CORS proxy + all Piped + Invidious instances simultaneously — fastest wins
+    // Try YouTube Data API first (most reliable)
+    try {
+      const videoId = await _fetchFromYouTubeAPI(query);
+      if (videoId) {
+        videoSearchCache[song.id] = { videoId, searched: true };
+        _cacheVideoId(song.id, videoId);
+        return videoId;
+      }
+    } catch { /* API unavailable or quota exhausted — fall through to proxies */ }
+
+    // Fallback: Race CORS proxy + all Piped + Invidious instances — fastest wins
     const allFetches = [
       _fetchFromCORSProxy(query),
       ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query)),
@@ -829,12 +964,7 @@ async function fetchYouTubeVideoId(song) {
       const videoId = await Promise.any(allFetches);
       if (videoId) {
         videoSearchCache[song.id] = { videoId, searched: true };
-        // Save to persistent cache
-        try {
-          const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
-          cache[song.id] = videoId;
-          localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
-        } catch (e) {}
+        _cacheVideoId(song.id, videoId);
         return videoId;
       }
     } catch { /* all instances failed, try next query */ }
@@ -915,16 +1045,18 @@ function setupSongMedia(song) {
     video.load();
   }
 
-  // Prefetch video IDs for next 2 songs
-  if (window.history && historyIndex < history.length - 1) {
-    const nextSong = history[historyIndex + 1];
-    if (nextSong) fetchYouTubeVideoId(nextSong).catch(() => {});
+  // Prefetch video IDs for next 3 songs in history
+  for (let i = 1; i <= 3; i++) {
+    const upcoming = history[historyIndex + i];
+    if (upcoming) fetchYouTubeVideoId(upcoming).catch(() => {});
   }
-  // Also prefetch from current playlist/context if possible
+  // Also prefetch from current playlist/context
   const db = getActiveDB();
   const currentIdx = db.findIndex(s => s.id === song.id);
-  if (currentIdx !== -1 && currentIdx < db.length - 2) {
-     fetchYouTubeVideoId(db[currentIdx + 2]).catch(() => {});
+  for (let offset = 1; offset <= 2; offset++) {
+    if (currentIdx !== -1 && currentIdx + offset < db.length) {
+      fetchYouTubeVideoId(db[currentIdx + offset]).catch(() => {});
+    }
   }
 
   // Background search (always runs, upgrades CANVAS → YOUTUBE when found)
@@ -932,15 +1064,12 @@ function setupSongMedia(song) {
   fetchYouTubeVideoId(song).then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
-    
+
     if (videoId) {
       currentVideoContent = 'youtube';
-      // If user is already in video mode, upgrade seamlessly
       if (currentMediaMode === 'video') {
-         _activateYouTubeIframe(videoId, audio.currentTime);
-      }
-    }
-  });
+        // User is already in video mode — upgrade seamlessly
+        _activateYouTubeIframe(videoId, audio.currentTime);
       } else {
         // Still in audio mode — silently pre-warm so Video click will be instant
         _prewarmYouTubeIframe(videoId);
@@ -953,12 +1082,15 @@ function playByEra(era) {
   if (typeof SongsDB === 'undefined' || !SongsDB.SONGS_DB) { showToast('Loading...'); return; }
   activeLanguage = 'telugu';
   bollywoodCategoryPool = null;
+  const eraToDecadeKey = { 'classics': '1980s', '1990s': '1990s', '2000s': '2000s', '2010s': '2010s', '2020s': '2020s' };
+  eraLock = eraToDecadeKey[era] || null;
+  updateEraLockBadge();
   const ranges = { 'classics':[1980,1989], '1990s':[1990,1999], '2000s':[2000,2009], '2010s':[2010,2019], '2020s':[2020,2030] };
   const r = ranges[era];
   if (!r) { playRandomSong(); return; }
   const pool = SongsDB.SONGS_DB.filter(s => { const y = parseInt(s.year); return y >= r[0] && y <= r[1]; });
   if (!pool.length) { playRandomSong(); return; }
-  const song = pool[Math.floor(Math.random() * pool.length)];
+  const song = smartPickRandom(pool, currentSong?.id) || pool[Math.floor(Math.random() * pool.length)];
   history.push(song); historyIndex = history.length - 1;
   playSong(song); showPage('player');
 }
@@ -1096,8 +1228,13 @@ function playNext() {
       playSong(song); return;
     }
   }
-  // Play random from current language
-  if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
+  // Smart shuffle: use smartPickRandom with era lock support
+  const db = getActiveDB();
+  const song = smartPickRandom(db, currentSong?.id);
+  if (song) {
+    history.push(song); historyIndex = history.length - 1;
+    playSong(song);
+  } else if (activeLanguage === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
     playRandomBollywood();
   } else {
     playRandomSong();
@@ -1122,6 +1259,26 @@ function toggleShuffle() {
   shuffleOn = !shuffleOn;
   document.getElementById('shuffle-btn').classList.toggle('active', shuffleOn);
   showToast(shuffleOn ? 'Shuffle on' : 'Shuffle off');
+}
+
+function updateEraLockBadge() {
+  const badge = document.getElementById('era-lock-badge');
+  const text = document.getElementById('era-lock-text');
+  if (!badge) return;
+  if (eraLock) {
+    const labels = { '2020s': '2020s Hits', '2010s': '2010s Hits', '2000s': '2000s Hits', '1990s': '90s Classics', '1980s': '80s Classics', 'pre1980': 'Vintage' };
+    if (text) text.textContent = labels[eraLock] || eraLock;
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function clearEraLock() {
+  eraLock = null;
+  bollywoodCategoryPool = null;
+  updateEraLockBadge();
+  showToast('Playing all decades');
 }
 
 // ═══ LYRICS (LRCLIB time-synced) ═══
@@ -1845,12 +2002,13 @@ function initSearch() {
 let bollywoodCategoryPool = null;
 
 function playRandomBollywood() {
+  activeLanguage = 'hindi';
+  bollywoodCategoryPool = null;
+  eraLock = null;
+  updateEraLockBadge();
   const excludeId = currentSong ? currentSong.id : null;
   const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
-  let song = null;
-  if (typeof BollywoodSongsDB !== 'undefined' && typeof BollywoodSongsDB.getRandomSong === 'function') {
-    song = BollywoodSongsDB.getRandomSong(excludeId);
-  }
+  let song = smartPickRandom(hindiDb, excludeId);
   if (!song) {
     song = pickRandomSongFromList(hindiDb, excludeId);
   }
@@ -1863,6 +2021,9 @@ function playRandomBollywood() {
 
 function playBollywoodByEra(era) {
   if (typeof BollywoodSongsDB === 'undefined') return;
+  const eraToDecadeKey = { 'classics': '1980s', '1990s': '1990s', '2000s': '2000s', '2010s': '2010s', '2020s': '2020s' };
+  eraLock = eraToDecadeKey[era] || null;
+  updateEraLockBadge();
   const ranges = { '2020s': [2020,2030], '2010s': [2010,2019], '2000s': [2000,2009], '1990s': [1990,1999], 'classics': [1980,1989] };
   const r = ranges[era];
   if (!r) { playRandomBollywood(); return; }
@@ -1870,7 +2031,7 @@ function playBollywoodByEra(era) {
   if (!pool.length) { playRandomBollywood(); return; }
   bollywoodCategoryPool = pool.slice().sort(() => Math.random() - 0.5);
   activeLanguage = 'hindi';
-  const song = bollywoodCategoryPool[0];
+  const song = smartPickRandom(pool, currentSong?.id) || bollywoodCategoryPool[0];
   history = [song]; historyIndex = 0;
   playSong(song); showPage('player');
 }

@@ -349,6 +349,21 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .progress-bar:hover .progress-fill::after, .progress-bar.dragging .progress-fill::after { width: 24px; height: 24px; right: -12px; }
 .progress-knob { display: none; }
 .progress-times { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
+.era-lock-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--accent-soft); border: 1px solid var(--accent);
+  border-radius: 20px; padding: 4px 12px 4px 14px;
+  font-size: 13px; color: var(--accent); font-weight: 600;
+  margin-bottom: 4px; animation: fadeIn 0.2s ease;
+}
+.era-lock-badge.hidden { display: none; }
+.era-lock-clear {
+  background: none; border: none; color: var(--accent); font-size: 16px;
+  cursor: pointer; padding: 0 2px; opacity: 0.7; line-height: 1;
+}
+.era-lock-clear:hover { opacity: 1; }
+@keyframes fadeIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+
 .controls {
   display: grid; grid-template-columns: 1fr 1fr auto 1fr 1fr;
   align-items: center; justify-items: center; gap: 6px;
