@@ -57,32 +57,52 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '37';
+const RELEASE_MARKER = '38';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
+  // Legendary voices
   's. p. balasubrahmanyam', 'ghantasala', 'p. susheela', 's. janaki',
+  // Modern superstars
   'sid sriram', 'armaan malik', 'anurag kulkarni', 'haricharan',
   'shreya ghoshal', 'sunitha', 'chinmayi', 'mangli',
+  // Top music directors
   'thaman s', 'devi sri prasad', 's. s. thaman', 'm. m. keeravani',
   'ilaiyaraaja', 'a. r. rahman', 'shankar mahadevan', 'karthik',
+  // Popular singers
   'sagar', 'rahul sipligunj', 'javed ali', 'krishna chaitanya',
-  'ramya behara', 'mohana bhogaraju', 'yazin nizar', 'roll rida'
+  'ramya behara', 'mohana bhogaraju', 'yazin nizar', 'roll rida',
+  // Additional popular Telugu artists
+  'inno genga', 'nutana mohan', 'nakash aziz', 'shweta mohan',
+  'andrea jeremiah', 'tippu', 'kaala bhairava', 'pradeep kumar',
+  'adnan sami', 'srivalli', 'hemachandra', 'geetha madhuri',
+  'lav', 'dhanunjay', 'sahithi', 'vandemataram srinivas',
+  'anup rubens', 'mickey j meyer', 'sri krishna', 'deepu'
 ];
 const CURATED_HINDI_ARTISTS = [
+  // Bollywood legends
   'arijit singh', 'shreya ghoshal', 'lata mangeshkar', 'kishore kumar',
   'mohammed rafi', 'sonu nigam', 'atif aslam', 'jubin nautiyal',
   'neha kakkar', 'armaan malik', 'pritam', 'a. r. rahman',
+  // Current hits makers
   'vishal mishra', 'b praak', 'darshan raval', 'kumar sanu',
   'udit narayan', 'alka yagnik', 'asha bhosle', 'sunidhi chauhan',
   'honey singh', 'badshah', 'stebin ben', 'shaan', 'kk',
   'mohit chauhan', 'mika singh', 'palak muchhal', 'tulsi kumar',
+  // Major voices & composers
   'rahat fateh ali khan', 'sachet tandon', 'parampara tandon',
   'sachin-jigar', 'tanishk bagchi', 'guru randhawa', 'dhvani bhanushali',
   'raftaar', 'amit trivedi', 'shankar ehsaan loy', 'vishal-shekhar',
   'himesh reshammiya', 'diljit dosanjh', 'harrdy sandhu', 'jasleen royal',
   'jonita gandhi', 'asees kaur', 'sukhwinder singh', 'rekha bhardwaj',
-  'papon', 'monali thakur', 'ankit tiwari', 'javed ali'
+  'papon', 'monali thakur', 'ankit tiwari', 'javed ali',
+  // Additional popular artists
+  'shankar mahadevan', 'sid sriram', 'aashiqui', 'salim merchant',
+  'sulaiman merchant', 'nakash aziz', 'abhijeet', 'sonu kakkar',
+  'tony kakkar', 'millind gaba', 'yo yo honey singh', 'akhil sachdeva',
+  'amaal mallik', 'meet bros', 'rochak kohli', 'arko',
+  'nusrat fateh ali khan', 'jagjit singh', 'lucky ali', 'adnan sami',
+  'hariharan', 'kavita krishnamurthy', 'sadhana sargam', 'sapna jahan'
 ];
 let hasShownCodecWarning = false;
 
@@ -552,20 +572,29 @@ function scoreYouTubeCandidate(song, candidate) {
   const artistMatch = Math.max(overlapScore(artistTokens, titleTokens), overlapScore(artistTokens, channelTokens));
   const albumMatch = overlapScore(albumTokens, titleTokens);
 
-  let score = titleMatch * 0.62 + artistMatch * 0.3 + albumMatch * 0.08;
+  let score = titleMatch * 0.55 + artistMatch * 0.32 + albumMatch * 0.13;
 
-  if (/karaoke|cover|remix|nightcore|sped up|slowed|instrumental|dj/i.test(titleNorm)) score -= 0.35;
-  if (/teaser|trailer|reaction|review|status|shorts|whatsapp/i.test(titleNorm)) score -= 0.28;
-  if (/scene|bgm|theme|trending|teaser|promo/i.test(titleNorm)) score -= 0.18;
-  if (/official|video|4k|hd|lyrics?/i.test(titleNorm)) score += 0.08;
+  // Heavy penalties for wrong content types
+  if (/karaoke|cover|remix|nightcore|sped up|slowed|instrumental|dj|mashup/i.test(titleNorm)) score -= 0.40;
+  if (/teaser|trailer|reaction|review|status|shorts|whatsapp|behind the scenes/i.test(titleNorm)) score -= 0.35;
+  if (/scene|bgm|theme|promo|interview|making|bts/i.test(titleNorm)) score -= 0.22;
+  if (/jukebox|all songs|top \d+|best of|non.?stop|compilation/i.test(titleNorm)) score -= 0.45;
+  if (/official|video|4k|hd|lyrics?|full video/i.test(titleNorm)) score += 0.10;
+  if (/full video song|official music video|official video/i.test(titleNorm)) score += 0.15;
 
-  if (titleMatch < 0.35) score -= 0.18;
-  if (titleMatch > 0.75) score += 0.12;
+  // Song name must appear in title — reject if completely absent
+  if (titleMatch < 0.30) score -= 0.25;
+  if (titleMatch > 0.75) score += 0.15;
 
   const songTitleNorm = normalizeForMatch(song?.name || '');
   const artistNorm = normalizeForMatch(getSongArtistSeed(song));
-  if (songTitleNorm && titleNorm.includes(songTitleNorm)) score += 0.2;
+  if (songTitleNorm && titleNorm.includes(songTitleNorm)) score += 0.22;
   if (artistNorm && (titleNorm.includes(artistNorm) || normalizeForMatch(candidate?.channel || '').includes(artistNorm))) {
+    score += 0.14;
+  }
+  // Bonus for official music labels in channel name
+  const channelNorm = normalizeForMatch(candidate?.channel || '');
+  if (/t.?series|aditya music|saregama|sony music|zee music|tips|eros|speed records|divo/i.test(channelNorm)) {
     score += 0.12;
   }
 
@@ -586,13 +615,13 @@ function bestVideoCandidate(song, candidates) {
   return best;
 }
 
-function pickVideoIdFromCandidates(song, candidates, minScore = 0.34) {
+function pickVideoIdFromCandidates(song, candidates, minScore = 0.38) {
   const best = bestVideoCandidate(song, candidates);
   if (!best) return null;
   if (best.score >= minScore) return best.id;
 
   // Proxy results may not include title/channel metadata; prefer availability in that case.
-  if (!best.hasMeta && best.score >= 0.08) return best.id;
+  if (!best.hasMeta && best.score >= 0.12) return best.id;
 
   const allNoMeta = (candidates || []).every(c => !String(c?.title || '').trim() && !String(c?.channel || '').trim());
   if (allNoMeta) {
@@ -614,7 +643,7 @@ function fallbackVideoIdFromCandidates(song, candidates) {
     }
   }
 
-  if (best && best.score >= 0.08) return best.videoId;
+  if (best && best.score >= 0.18) return best.videoId;
 
   const nameNorm = normalizeForMatch(compactSearchPhrase(song?.name || '') || song?.name || '');
   const artistNorm = normalizeForMatch(compactSearchPhrase(getSongArtistSeed(song)) || getSongArtistSeed(song));
@@ -689,10 +718,13 @@ function syncYouTubeTime(force = false) {
   if (currentVideoContent !== 'youtube') return;
   const ytFrame = document.getElementById('yt-iframe');
   if (!ytFrame || ytFrame.classList.contains('hidden')) return;
-  if (audio.paused || !audio.duration) return;
+  if (!audio.duration) return;
+  // Allow forced sync even when paused (e.g. after seek)
+  if (audio.paused && !force) return;
 
   // Estimate YouTube's current position from our last seek command
-  const ytEstimate = _lastYtSeekAt ? (_lastYtSeekTime + (Date.now() - _lastYtSeekAt) / 1000) : audio.currentTime;
+  const elapsed = audio.paused ? 0 : (Date.now() - (_lastYtSeekAt || Date.now())) / 1000;
+  const ytEstimate = _lastYtSeekAt ? (_lastYtSeekTime + elapsed) : audio.currentTime;
   const drift = audio.currentTime - ytEstimate;
 
   // Median filter: smooth out jitter from network latency
@@ -708,6 +740,10 @@ function syncYouTubeTime(force = false) {
     _lastYtSeekAt = Date.now();
     lastYouTubeSyncAt = Date.now();
     if (force) ytDriftHistory = [];
+    // Re-send playVideo after sync to prevent stuck pause state
+    if (!audio.paused) {
+      _ytPostMessage('playVideo', []);
+    }
   }
 }
 
@@ -1995,33 +2031,42 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   // Keep audio as source-of-truth. YouTube stays muted and follows audio timeline.
   _ytPostMessage('mute', []);
 
+  ytFrame.classList.remove('hidden');
+  visualizer?.classList.add('hidden');
+  video?.classList.add('hidden');
+  currentVideoContent = 'youtube';
+  if (badge) badge.textContent = 'YOUTUBE';
+  // Set thumbnail as background for instant visual while iframe loads
+  if (videoId) ytFrame.style.backgroundImage = `url(https://i.ytimg.com/vi/${videoId}/hqdefault.jpg)`;
+
   if (isPrewarmed) {
-    // FAST PATH: already buffered — just unmute, seek, play
-    ytFrame.classList.remove('hidden');
-    visualizer?.classList.add('hidden');
-    video?.classList.add('hidden');
-    currentVideoContent = 'youtube';
-    if (badge) badge.textContent = 'YOUTUBE';
+    // FAST PATH: already buffered — seek, mute, play
+    const seekSec = Math.floor(startSeconds || 0);
     setTimeout(() => {
-      if (startSeconds > 0) _ytPostMessage('seekTo', [Math.floor(startSeconds), true]);
+      if (seekSec > 0) _ytPostMessage('seekTo', [seekSec, true]);
       _ytPostMessage('mute', []);
-      _ytPostMessage('playVideo', []);
-    }, 50);
+      if (!audio.paused) _ytPostMessage('playVideo', []);
+      _lastYtSeekTime = seekSec;
+      _lastYtSeekAt = Date.now();
+    }, 80);
   } else {
     // COLD PATH: not yet pre-warmed — load with autoplay
     ytFrame.src = buildYouTubeEmbedUrl(videoId, startSeconds);
-    ytFrame.classList.remove('hidden');
-    visualizer?.classList.add('hidden');
-    video?.classList.add('hidden');
-    currentVideoContent = 'youtube';
-    if (badge) badge.textContent = 'YOUTUBE';
+    _lastYtSeekTime = Math.floor(startSeconds || 0);
+    _lastYtSeekAt = Date.now();
   }
 
+  // Robust startup: ensure YouTube is muted and playing after iframe loads
   if (!audio.paused) {
-    _ytPostMessage('playVideo', []);
+    // Retry playVideo multiple times — iframe may not respond to first command
+    [200, 600, 1500].forEach(delay => {
+      setTimeout(() => {
+        if (currentVideoContent !== 'youtube' || audio.paused) return;
+        _ytPostMessage('mute', []);
+        _ytPostMessage('playVideo', []);
+      }, delay);
+    });
   }
-  // Set thumbnail as background for instant visual while iframe loads
-  if (videoId) ytFrame.style.backgroundImage = `url(https://i.ytimg.com/vi/${videoId}/hqdefault.jpg)`;
   syncYouTubeTime(true);
   startYtSyncLoop();
 }
@@ -2237,7 +2282,7 @@ async function fetchYouTubeVideoId(song) {
       const sourceCount = results.filter(r => r.length > 0).length;
       console.log(`[Video Search] Q${qi+1} "${query.slice(0,40)}": ${sourceCount} sources, ${allCandidates.length} candidates`);
 
-      const videoId = pickVideoIdFromCandidates(song, allCandidates, qi === 0 ? 0.25 : 0.16)
+      const videoId = pickVideoIdFromCandidates(song, allCandidates, qi === 0 ? 0.32 : 0.22)
         || fallbackVideoIdFromCandidates(song, allCandidates);
 
       if (videoId) {
@@ -2260,7 +2305,7 @@ async function fetchYouTubeVideoId(song) {
     const corsChance = await _fetchFromCORSProxy(simpleQuery).catch(() => []);
     const finalCandidates = [...lastChance, ...corsChance].filter(c => c?.videoId);
     if (finalCandidates.length) {
-      const videoId = pickVideoIdFromCandidates(song, finalCandidates, 0.12)
+      const videoId = pickVideoIdFromCandidates(song, finalCandidates, 0.20)
         || fallbackVideoIdFromCandidates(song, finalCandidates);
       if (videoId) {
         console.log('[Video Search] Last resort found:', videoId);
@@ -2830,9 +2875,24 @@ function seekTo(e) {
   const bar = document.getElementById('progress-bar');
   if (!bar) return;
   const rect = bar.getBoundingClientRect();
-  audio.currentTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * audio.duration;
+  const newTime = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * audio.duration;
+  audio.currentTime = newTime;
   syncSongVideoTime();
-  syncYouTubeTime(true);
+  // Force YouTube seek + ensure playback resumes after seek
+  if (currentVideoContent === 'youtube') {
+    const seekSec = Math.floor(newTime);
+    _ytPostMessage('seekTo', [seekSec, true]);
+    _lastYtSeekTime = seekSec;
+    _lastYtSeekAt = Date.now();
+    ytDriftHistory = [];
+    // Ensure YouTube keeps playing after seek (fixes stuck-on-pause after drag)
+    if (!audio.paused) {
+      setTimeout(() => {
+        _ytPostMessage('mute', []);
+        _ytPostMessage('playVideo', []);
+      }, 100);
+    }
+  }
 }
 
 function initProgressDrag() {
@@ -3416,7 +3476,7 @@ function fallbackHomeData(language) {
 
   const collections = Object.entries(byArtist)
     .sort((a, b) => b[1].length - a[1].length)
-    .slice(0, 6)
+    .slice(0, 8)
     .map(([artist, songs]) => {
       // Sort by year desc for each artist collection
       songs.sort((a, b) => parseInt(b.year || 0) - parseInt(a.year || 0));
