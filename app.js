@@ -203,23 +203,27 @@ let lastYouTubeSyncAt = 0;
 
 const PIPED_INSTANCES = [
   'pipedapi.kavin.rocks',
-  'pipedapi.tokhmi.xyz',
-  'pipedapi.moomoo.me',
   'pipedapi.adminforge.de',
   'api.piped.yt',
-  'piped-api.garudalinux.org',
-  'pipedapi.in.projectsegfau.lt'
+  'pipedapi.r4fo.com',
+  'pipedapi.darkness.services',
+  'piped-api.lunar.icu'
 ];
 const INVIDIOUS_INSTANCES = [
-  'invidious.privacydev.net',
-  'vid.puffyan.us',
-  'yt.artemislena.eu',
-  'invidious.flokinet.to',
-  'invidious.fdn.fr',
-  'yewtu.be'
+  'inv.nadeko.net',
+  'iv.ggtyler.dev',
+  'invidious.materialio.us',
+  'invidious.nerdvpn.de',
+  'yewtu.be',
+  'invidious.privacydev.net'
 ];
-const PIPED_TIMEOUT_MS = IS_MOBILE ? 3000 : 4200;
-const VIDEO_SEARCH_STALE_MS = IS_MOBILE ? 7000 : 9000;
+const CORS_PROXIES = [
+  url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+];
+const PIPED_TIMEOUT_MS = IS_MOBILE ? 4000 : 5000;
+const VIDEO_SEARCH_STALE_MS = IS_MOBILE ? 9000 : 12000;
 let youtubeApiQuotaExhausted = false;
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
@@ -1666,7 +1670,7 @@ function switchToVideoMode() {
         if (badge && badge.textContent === 'SEARCHING...') {
           badge.textContent = 'CANVAS';
         }
-      }, 12000);
+      }, 20000);
       waitSearch.then(videoId => {
         clearTimeout(searchTimeoutId);
         // Only activate if user is still on the same song and still in video mode
@@ -1752,39 +1756,44 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 }
 
 async function _fetchFromInnerTube(query, limit = 8) {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
-  try {
-    const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: ctrl.signal,
-      body: JSON.stringify({
-        context: { client: { clientName: 'WEB', clientVersion: '2.20240101' } },
-        query: query
-      })
-    });
-    clearTimeout(t);
-    if (!res.ok) throw new Error('bad');
-    const data = await res.json();
-    const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
-    const candidates = [];
-    for (const section of contents) {
-      const items = section?.itemSectionRenderer?.contents || [];
-      for (const item of items) {
-        const renderer = item?.videoRenderer;
-        const videoId = renderer?.videoId;
-        const title = renderer?.title?.runs?.map(r => r?.text || '').join(' ') || renderer?.title?.simpleText || '';
-        const channel = renderer?.ownerText?.runs?.[0]?.text || '';
-        if (videoId && videoId.length === 11) {
-          candidates.push({ videoId, title, channel });
-          if (candidates.length >= limit) return candidates;
+  // Try multiple client configs — some may bypass CORS/bot detection
+  const clients = [
+    { clientName: 'WEB', clientVersion: '2.20240101' },
+    { clientName: 'MWEB', clientVersion: '2.20240101' }
+  ];
+  for (const client of clients) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
+    try {
+      const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ctrl.signal,
+        body: JSON.stringify({ context: { client }, query })
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const data = await res.json();
+      const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents
+        || data?.contents?.sectionListRenderer?.contents || [];
+      const candidates = [];
+      for (const section of contents) {
+        const items = section?.itemSectionRenderer?.contents || [];
+        for (const item of items) {
+          const renderer = item?.videoRenderer || item?.compactVideoRenderer;
+          const videoId = renderer?.videoId;
+          const title = renderer?.title?.runs?.map(r => r?.text || '').join(' ') || renderer?.title?.simpleText || '';
+          const channel = renderer?.ownerText?.runs?.[0]?.text || renderer?.shortBylineText?.runs?.[0]?.text || '';
+          if (videoId && videoId.length === 11) {
+            candidates.push({ videoId, title, channel });
+            if (candidates.length >= limit) return candidates;
+          }
         }
       }
-    }
-    if (!candidates.length) throw new Error('not found');
-    return candidates;
-  } catch (e) { clearTimeout(t); throw e; }
+      if (candidates.length) return candidates;
+    } catch (e) { clearTimeout(t); }
+  }
+  throw new Error('innertube failed');
 }
 
 async function _fetchFromYouTubeAPI(query, limit = 8) {
@@ -1865,27 +1874,31 @@ async function _fetchFromInvidious(instance, query) {
 
 async function _fetchFromCORSProxy(query) {
   const ytUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-  const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(ytUrl)}`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS); // 3.5s timeout for scraper
-  try {
-    const res = await fetch(proxyUrl, { signal: ctrl.signal });
-    clearTimeout(t);
-    if (!res.ok) throw new Error('bad');
-    const html = await res.text();
-    const seen = new Set();
-    const candidates = [];
-    const regex = /"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g;
-    let m;
-    while ((m = regex.exec(html)) !== null && candidates.length < 10) {
-      if (!seen.has(m[1])) {
-        seen.add(m[1]);
-        candidates.push({ videoId: m[1], title: '', channel: '' });
-      }
-    }
-    if (!candidates.length) throw new Error('no id');
-    return candidates;
-  } catch (e) { clearTimeout(t); throw e; }
+  // Try multiple CORS proxies in parallel
+  const proxyFetches = CORS_PROXIES.map(proxyFn => {
+    const proxyUrl = proxyFn(ytUrl);
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), PIPED_TIMEOUT_MS);
+    return fetch(proxyUrl, { signal: ctrl.signal })
+      .then(res => { clearTimeout(t); if (!res.ok) throw new Error('bad'); return res.text(); })
+      .then(html => {
+        const seen = new Set();
+        const candidates = [];
+        const regex = /"videoId"\s*:\s*"([a-zA-Z0-9_-]{11})"/g;
+        let m;
+        while ((m = regex.exec(html)) !== null && candidates.length < 10) {
+          if (!seen.has(m[1])) { seen.add(m[1]); candidates.push({ videoId: m[1], title: '', channel: '' }); }
+        }
+        if (!candidates.length) throw new Error('no id');
+        return candidates;
+      })
+      .catch(e => { clearTimeout(t); throw e; });
+  });
+  // Return first successful proxy result
+  const settled = await Promise.allSettled(proxyFetches);
+  const first = settled.find(s => s.status === 'fulfilled');
+  if (first) return first.value;
+  throw new Error('all proxies failed');
 }
 
 function _cacheVideoId(songId, videoId) {
@@ -1923,6 +1936,7 @@ async function fetchYouTubeVideoId(song) {
   videoSearchCache[song.id] = { videoId: null, searched: false };
 
   const queries = buildVideoSearchQueries(song);
+  console.log('[Video Search] Starting for:', song.name, '| Queries:', queries.length);
 
   // Fast path first: YouTube Data API only. This was previously the most reliable path.
   for (const query of queries) {
@@ -1935,55 +1949,37 @@ async function fetchYouTubeVideoId(song) {
         _cacheVideoId(song.id, apiVideoId);
         return apiVideoId;
       }
-    } catch { /* continue to richer search fallback */ }
+    } catch (e) { console.log('[Video Search] YouTube API failed:', e.message); }
   }
 
+  console.log('[Video Search] YouTube API exhausted, trying InnerTube + proxies...');
   for (const query of queries) {
-    // Try InnerTube + YouTube API in parallel.
-    try {
-      const settled = await Promise.allSettled([
-        _fetchFromInnerTube(query, 8),
-        _fetchFromYouTubeAPI(query, 8)
-      ]);
-      const primaryCandidates = settled
-        .filter(entry => entry.status === 'fulfilled')
-        .flatMap(entry => Array.isArray(entry.value) ? entry.value : []);
-
-      const videoId = pickVideoIdFromCandidates(song, primaryCandidates, 0.32)
-        || fallbackVideoIdFromCandidates(song, primaryCandidates);
-
-      if (videoId) {
-        videoSearchCache[song.id] = { videoId, searched: true };
-        _cacheVideoId(song.id, videoId);
-        return videoId;
-      }
-    } catch { /* primary providers failed — fall through to proxies */ }
-
-    // Fallback: gather candidates from public proxies, then score for best match
+    // Try ALL sources in parallel: InnerTube, CORS proxies, Piped, Invidious
     const allFetches = [
+      _fetchFromInnerTube(query, 8),
       _fetchFromCORSProxy(query),
       ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query)),
       ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query))
     ];
     try {
       const settled = await Promise.allSettled(allFetches);
-      const allCandidates = settled
-        .filter(entry => entry.status === 'fulfilled')
+      const fulfilled = settled.filter(entry => entry.status === 'fulfilled');
+      const failed = settled.filter(entry => entry.status === 'rejected');
+      console.log(`[Video Search] Query "${query.slice(0,40)}": ${fulfilled.length} sources succeeded, ${failed.length} failed`);
+      const allCandidates = fulfilled
         .flatMap(entry => Array.isArray(entry.value) ? entry.value : []);
-      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.16);
+      console.log(`[Video Search] Total candidates: ${allCandidates.length}`);
+
+      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.16)
+        || fallbackVideoIdFromCandidates(song, allCandidates);
+
       if (videoId) {
+        console.log('[Video Search] Found video:', videoId);
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
         return videoId;
       }
-
-      const fallbackVideoId = fallbackVideoIdFromCandidates(song, allCandidates);
-      if (fallbackVideoId) {
-        videoSearchCache[song.id] = { videoId: fallbackVideoId, searched: true };
-        _cacheVideoId(song.id, fallbackVideoId);
-        return fallbackVideoId;
-      }
-    } catch { /* all instances failed, try next query */ }
+    } catch { /* all sources failed, try next query */ }
   }
 
   videoSearchCache[song.id] = { videoId: null, searched: true, retryAfter: Date.now() + 3 * 60 * 1000 };
