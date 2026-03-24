@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '39';
+const RELEASE_MARKER = '40';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -360,6 +360,205 @@ function _pullPreloadedAudioUrl(songId) {
   const url = entry.url;
   entry.el.removeAttribute('src'); entry.el.load();
   return url;
+}
+
+// ═══ MEGA QUEUE — Pre-built song queue with video IDs ═══
+const MEGA_QUEUE_KEY = 'raagam_mega_queue';
+const MEGA_QUEUE_SIZE = 50; // per language
+let megaQueue = { telugu: [], hindi: [] }; // { songId, videoId }[]
+let megaQueueReady = false;
+let megaQueueResolving = false;
+
+function _loadMegaQueue() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(MEGA_QUEUE_KEY));
+    if (stored && stored.telugu && stored.hindi) {
+      megaQueue = stored;
+      return true;
+    }
+  } catch {}
+  return false;
+}
+
+function _saveMegaQueue() {
+  try { localStorage.setItem(MEGA_QUEUE_KEY, JSON.stringify(megaQueue)); } catch {}
+}
+
+function _shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function _pickCuratedSongs(db, curatedArtists, count) {
+  if (!Array.isArray(db) || !db.length) return [];
+  // Prefer curated artist songs with duration >= 120s
+  const curated = db.filter(s => {
+    if (!s?.id || !s?.audio) return false;
+    if (s.duration && s.duration < 120) return false;
+    const artists = (s.artists || '').toLowerCase();
+    return curatedArtists.some(a => artists.includes(a));
+  });
+  _shuffleArray(curated);
+  // Fill remaining from general pool if needed
+  if (curated.length < count) {
+    const curatedIds = new Set(curated.map(s => s.id));
+    const others = db.filter(s => s?.id && s?.audio && !curatedIds.has(s.id) && (!s.duration || s.duration >= 120));
+    _shuffleArray(others);
+    curated.push(...others.slice(0, count - curated.length));
+  }
+  return curated.slice(0, count);
+}
+
+// Pop a song from MegaQueue for a given language, returns { songId, videoId } or null
+function megaQueuePop(language) {
+  const lang = language === 'hindi' ? 'hindi' : 'telugu';
+  const q = megaQueue[lang];
+  if (!q || !q.length) return null;
+  const entry = q.shift();
+  _saveMegaQueue();
+  // Trigger background refill
+  setTimeout(() => _megaQueueRefill(lang), 200);
+  return entry;
+}
+
+// Get a song object from MegaQueue entry
+function megaQueueGetSong(entry, language) {
+  if (!entry?.songId) return null;
+  const db = language === 'hindi'
+    ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+    : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+  return db.find(s => s.id === entry.songId) || null;
+}
+
+// Build/refill MegaQueue for a specific language
+async function _megaQueueRefill(lang) {
+  if (megaQueueResolving) return;
+  const q = megaQueue[lang];
+  const needed = MEGA_QUEUE_SIZE - q.length;
+  if (needed <= 0) return;
+
+  megaQueueResolving = true;
+  try {
+    const db = lang === 'hindi'
+      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    if (!db.length) { megaQueueResolving = false; return; }
+
+    const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
+    const existingIds = new Set(q.map(e => e.songId));
+    // Also exclude recently played
+    const candidates = _pickCuratedSongs(db, artists, needed + 20)
+      .filter(s => !existingIds.has(s.id));
+
+    const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+
+    for (const song of candidates.slice(0, needed)) {
+      // Check if video ID already cached
+      let videoId = videoCache[song.id] || videoSearchCache[song.id]?.videoId || null;
+      if (!videoId) {
+        try { videoId = await fetchYouTubeVideoId(song); } catch {}
+      }
+      q.push({ songId: song.id, videoId: videoId || null });
+      _saveMegaQueue();
+      // Yield to UI
+      await new Promise(r => setTimeout(r, 50));
+    }
+  } finally {
+    megaQueueResolving = false;
+  }
+}
+
+// Full startup queue build — called once after DBs load
+async function megaQueueStartup(progressCb) {
+  _loadMegaQueue();
+
+  // Remove entries whose songs no longer exist in DB
+  for (const lang of ['telugu', 'hindi']) {
+    const db = lang === 'hindi'
+      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    if (!db.length) continue;
+    const dbIds = new Set(db.map(s => s.id));
+    megaQueue[lang] = megaQueue[lang].filter(e => dbIds.has(e.songId));
+  }
+
+  const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+
+  // Resolve missing video IDs from localStorage cache (instant, no API calls)
+  let resolvedFromCache = 0;
+  for (const lang of ['telugu', 'hindi']) {
+    for (const entry of megaQueue[lang]) {
+      if (!entry.videoId && videoCache[entry.songId]) {
+        entry.videoId = videoCache[entry.songId];
+        resolvedFromCache++;
+      }
+    }
+  }
+  if (resolvedFromCache > 0) _saveMegaQueue();
+
+  // Fill up to target size
+  for (const lang of ['telugu', 'hindi']) {
+    const q = megaQueue[lang];
+    const needed = MEGA_QUEUE_SIZE - q.length;
+    if (needed <= 0) continue;
+
+    const db = lang === 'hindi'
+      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    if (!db.length) continue;
+
+    const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
+    const existingIds = new Set(q.map(e => e.songId));
+    const candidates = _pickCuratedSongs(db, artists, needed + 30)
+      .filter(s => !existingIds.has(s.id));
+
+    let added = 0;
+    for (const song of candidates) {
+      if (added >= needed) break;
+      let videoId = videoCache[song.id] || null;
+      if (!videoId) {
+        // Try resolving — but don't block too long per song
+        try { videoId = await fetchYouTubeVideoId(song); } catch {}
+      }
+      q.push({ songId: song.id, videoId: videoId || null });
+      added++;
+      if (progressCb) {
+        const total = (megaQueue.telugu.length + megaQueue.hindi.length);
+        progressCb(total, MEGA_QUEUE_SIZE * 2);
+      }
+      _saveMegaQueue();
+      await new Promise(r => setTimeout(r, 30));
+    }
+  }
+
+  // Shuffle both queues
+  _shuffleArray(megaQueue.telugu);
+  _shuffleArray(megaQueue.hindi);
+  _saveMegaQueue();
+  megaQueueReady = true;
+
+  // Background: resolve any entries that still have null videoId
+  _megaQueueResolveNulls();
+}
+
+// Background resolver for queue entries without video IDs
+async function _megaQueueResolveNulls() {
+  for (const lang of ['telugu', 'hindi']) {
+    for (const entry of megaQueue[lang]) {
+      if (entry.videoId) continue;
+      const db = lang === 'hindi'
+        ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+        : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+      const song = db.find(s => s.id === entry.songId);
+      if (!song) continue;
+      try { entry.videoId = await fetchYouTubeVideoId(song); } catch {}
+      _saveMegaQueue();
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
 }
 
 // API search
@@ -1484,14 +1683,40 @@ function enterApp() {
   updateCacheSize();
   initSongPreviews();
 
-  // Lazy-load song databases in background for offline search/shuffle
+  // Lazy-load song databases then build MegaQueue
   const idleCb = window.requestIdleCallback || (fn => setTimeout(fn, 100));
   idleCb(() => {
-    loadTeluguDb().then(() => { updateHomeStats(); if (!IS_MOBILE) warmSearchIndex(); });
+    loadTeluguDb().then(() => {
+      updateHomeStats();
+      if (!IS_MOBILE) warmSearchIndex();
+      // Start MegaQueue build after Telugu DB loads
+      _startMegaQueueBuild();
+    });
   }, { timeout: 2000 });
   idleCb(() => {
-    loadBollywoodDb().then(() => { updateHomeStats(); });
+    loadBollywoodDb().then(() => {
+      updateHomeStats();
+      // Rebuild MegaQueue with Bollywood songs too
+      _startMegaQueueBuild();
+    });
   }, { timeout: 4000 });
+}
+
+function _startMegaQueueBuild() {
+  if (megaQueueReady) return;
+  // Show a subtle progress indicator on home page
+  const badge = document.getElementById('mega-queue-status');
+  megaQueueStartup((loaded, total) => {
+    if (badge) {
+      badge.textContent = `Prefetching ${loaded}/${total} songs...`;
+      badge.classList.remove('hidden');
+    }
+  }).then(() => {
+    if (badge) {
+      badge.textContent = `${megaQueue.telugu.length + megaQueue.hindi.length} songs ready`;
+      setTimeout(() => badge.classList.add('hidden'), 3000);
+    }
+  });
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -1717,7 +1942,20 @@ function playRandomSong() {
   prefetchQueue = []; // flush — language changed
   updateEraLockBadge();
   let song = null;
-  {
+
+  // Try MegaQueue first — songs have pre-resolved video IDs
+  if (megaQueueReady && megaQueue.telugu.length > 0) {
+    const entry = megaQueuePop('telugu');
+    if (entry) {
+      song = megaQueueGetSong(entry, 'telugu');
+      // Pre-cache video ID so setupSongMedia finds it instantly
+      if (song && entry.videoId) {
+        videoSearchCache[song.id] = { videoId: entry.videoId, searched: true };
+      }
+    }
+  }
+
+  if (!song) {
     const excludeId = currentSong ? currentSong.id : null;
     const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
     song = smartPickRandom(teluguDb, excludeId);
@@ -2243,10 +2481,10 @@ function _cacheVideoId(songId, videoId) {
   try {
     const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
     cache[songId] = videoId;
-    // LRU eviction: keep max 2000 entries
+    // LRU eviction: keep max 5000 entries
     const keys = Object.keys(cache);
-    if (keys.length > 2000) {
-      keys.slice(0, keys.length - 2000).forEach(k => delete cache[k]);
+    if (keys.length > 5000) {
+      keys.slice(0, keys.length - 5000).forEach(k => delete cache[k]);
     }
     localStorage.setItem('raagam_video_cache', JSON.stringify(cache));
   } catch (e) {}
@@ -2687,15 +2925,29 @@ function playNext() {
     history.push(next); historyIndex = history.length - 1;
     playSong(next); return;
   }
-  // Smart shuffle: pull from prefetch queue first, fallback to smartPickRandom
+  // Smart shuffle: MegaQueue → prefetchQueue → smartPickRandom
   let song = null;
-  if (prefetchQueue.length > 0 && !activeCollectionPool && !(bollywoodCategoryPool && activeLanguage === 'hindi')) {
+
+  // 1. Try MegaQueue (has pre-resolved video IDs)
+  if (!song && megaQueueReady) {
+    const entry = megaQueuePop(activeLanguage);
+    if (entry) {
+      song = megaQueueGetSong(entry, activeLanguage);
+      if (song && entry.videoId) {
+        videoSearchCache[song.id] = { videoId: entry.videoId, searched: true };
+      }
+    }
+  }
+
+  // 2. Try prefetchQueue
+  if (!song && prefetchQueue.length > 0) {
     const candidate = prefetchQueue[0].song;
-    // Verify language matches — queue may have wrong-language songs after switch
     const candLang = (candidate?.language || '').toLowerCase() === 'hindi' ? 'hindi' : 'telugu';
     if (candLang === activeLanguage) song = candidate;
-    else prefetchQueue = []; // flush stale queue
+    else prefetchQueue = [];
   }
+
+  // 3. Fallback to smartPickRandom
   if (!song) {
     const db = getActiveDB();
     song = smartPickRandom(db, currentSong?.id);
@@ -4110,7 +4362,19 @@ function playRandomBollywood() {
   prefetchQueue = []; // flush — language changed
   updateEraLockBadge();
   let song = null;
-  {
+
+  // Try MegaQueue first — songs have pre-resolved video IDs
+  if (megaQueueReady && megaQueue.hindi.length > 0) {
+    const entry = megaQueuePop('hindi');
+    if (entry) {
+      song = megaQueueGetSong(entry, 'hindi');
+      if (song && entry.videoId) {
+        videoSearchCache[song.id] = { videoId: entry.videoId, searched: true };
+      }
+    }
+  }
+
+  if (!song) {
     const excludeId = currentSong ? currentSong.id : null;
     const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
     song = smartPickRandom(hindiDb, excludeId);
