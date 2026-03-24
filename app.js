@@ -2045,10 +2045,10 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   if (videoId) ytFrame.style.backgroundImage = `url(https://i.ytimg.com/vi/${videoId}/hqdefault.jpg)`;
 
   if (isPrewarmed) {
-    // FAST PATH: already buffered — seek, mute, play
+    // FAST PATH: already buffered — always seek to current position, mute, play
     const seekSec = Math.floor(startSeconds || 0);
     setTimeout(() => {
-      if (seekSec > 0) _ytPostMessage('seekTo', [seekSec, true]);
+      _ytPostMessage('seekTo', [seekSec, true]);
       _ytPostMessage('mute', []);
       if (!audio.paused) _ytPostMessage('playVideo', []);
       _lastYtSeekTime = seekSec;
@@ -2061,14 +2061,20 @@ function _activateYouTubeIframe(videoId, startSeconds) {
     _lastYtSeekAt = Date.now();
   }
 
-  // Robust startup: ensure YouTube is muted and playing after iframe loads
+  // Robust startup: ensure YouTube is muted, playing, and synced after iframe loads
+  const activationVideoId = videoId;
   if (!audio.paused) {
-    // Retry playVideo multiple times — iframe may not respond to first command
     [200, 600, 1500].forEach(delay => {
       setTimeout(() => {
         if (currentVideoContent !== 'youtube' || audio.paused) return;
         _ytPostMessage('mute', []);
         _ytPostMessage('playVideo', []);
+        // Re-sync position in case iframe wasn't ready for initial seek
+        if (audio.currentTime > 1) {
+          _ytPostMessage('seekTo', [Math.floor(audio.currentTime), true]);
+          _lastYtSeekTime = Math.floor(audio.currentTime);
+          _lastYtSeekAt = Date.now();
+        }
       }, delay);
     });
   }
@@ -2411,9 +2417,15 @@ function setupSongMedia(song) {
     video.load();
   }
 
-  // Handle pending video search (skip if prefetch already resolved)
+  // ALWAYS trigger video search in background — even in audio mode
+  // This ensures video is ready instantly when user switches to video tab mid-song
   const songIdAtSearch = song.id;
-  if (pendingVideoSearch && !prefetchedVid) pendingVideoSearch.then(videoId => {
+  if (!prefetchedVid && !cachedVideoId) {
+    ensureVideoSearch(song);
+  }
+
+  // Handle pending video search result
+  if (pendingVideoSearch) pendingVideoSearch.then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
 
@@ -2421,7 +2433,7 @@ function setupSongMedia(song) {
       currentVideoContent = 'youtube';
       updateVideoAvailability(true);
       if (currentMediaMode === 'video') {
-        // User is already in video mode — upgrade seamlessly
+        // User is already in video mode — upgrade seamlessly at current audio time
         _activateYouTubeIframe(videoId, audio.currentTime);
       } else {
         // Still in audio mode — silently pre-warm so Video click will be instant
@@ -2570,10 +2582,10 @@ function playSong(song) {
       if (voiceMode === 'vocal') {
         applyVocalHideForCurrentSong();
       }
-      // If in video mode, activate iframe immediately at time 0
+      // If in video mode, activate iframe at current audio position
       if (currentMediaMode === 'video' && currentVideoContent === 'youtube') {
         const vid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
-        if (vid) _activateYouTubeIframe(vid, 0);
+        if (vid) _activateYouTubeIframe(vid, audio.currentTime || 0);
       }
       setTimeout(() => {
         preloadNextSong();
