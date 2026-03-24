@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '36';
+const RELEASE_MARKER = '37';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -76,7 +76,13 @@ const CURATED_HINDI_ARTISTS = [
   'vishal mishra', 'b praak', 'darshan raval', 'kumar sanu',
   'udit narayan', 'alka yagnik', 'asha bhosle', 'sunidhi chauhan',
   'honey singh', 'badshah', 'stebin ben', 'shaan', 'kk',
-  'mohit chauhan', 'mika singh', 'palak muchhal', 'tulsi kumar'
+  'mohit chauhan', 'mika singh', 'palak muchhal', 'tulsi kumar',
+  'rahat fateh ali khan', 'sachet tandon', 'parampara tandon',
+  'sachin-jigar', 'tanishk bagchi', 'guru randhawa', 'dhvani bhanushali',
+  'raftaar', 'amit trivedi', 'shankar ehsaan loy', 'vishal-shekhar',
+  'himesh reshammiya', 'diljit dosanjh', 'harrdy sandhu', 'jasleen royal',
+  'jonita gandhi', 'asees kaur', 'sukhwinder singh', 'rekha bhardwaj',
+  'papon', 'monali thakur', 'ankit tiwari', 'javed ali'
 ];
 let hasShownCodecWarning = false;
 
@@ -374,7 +380,7 @@ function mergeSearchResults(apiResults, localResults) {
   const merged = [];
   for (const s of apiResults) { if (s?.id && !seen.has(s.id)) { seen.add(s.id); merged.push(s); } }
   for (const s of localResults) { if (s?.id && !seen.has(s.id)) { seen.add(s.id); merged.push(s); } }
-  return merged.slice(0, 80);
+  return merged.slice(0, 40);
 }
 
 // Song preview (Spotify-like hover) state
@@ -419,7 +425,9 @@ const PIPED_INSTANCES = [
   'api.piped.yt',
   'pipedapi.r4fo.com',
   'pipedapi.darkness.services',
-  'piped-api.lunar.icu'
+  'piped-api.lunar.icu',
+  'pipedapi.drgns.space',
+  'pipedapi.in.projectsegfau.lt'
 ];
 const INVIDIOUS_INSTANCES = [
   'inv.nadeko.net',
@@ -427,16 +435,21 @@ const INVIDIOUS_INSTANCES = [
   'invidious.materialio.us',
   'invidious.nerdvpn.de',
   'yewtu.be',
-  'invidious.privacydev.net'
+  'invidious.privacydev.net',
+  'vid.puffyan.us',
+  'invidious.fdn.fr'
 ];
 const CORS_PROXIES = [
   url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
   url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+  url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
+  url => `https://cors-anywhere.herokuapp.com/${url}`,
+  url => `https://thingproxy.freeboard.io/fetch/${url}`
 ];
-const PIPED_TIMEOUT_MS = IS_MOBILE ? 4000 : 5000;
+const PIPED_TIMEOUT_MS = IS_MOBILE ? 5000 : 6500;
 const VIDEO_SEARCH_STALE_MS = IS_MOBILE ? 9000 : 12000;
 let youtubeApiQuotaExhausted = false;
+let youtubeApiQuotaExhaustedAt = 0; // timestamp — auto-reset after 1 hour
 // songId → { videoId: string|null, searched: boolean }
 const videoSearchCache = {};
 
@@ -501,7 +514,7 @@ function buildVideoSearchQueries(song) {
   const artist = compactSearchPhrase(artistRaw) || artistRaw;
   const langHint = (song?.language || '').toLowerCase() === 'hindi' ? 'hindi' : 'telugu';
   const queries = [
-    `${name} ${artist} official video`,
+    `${name} ${artist} official music video`,
     `${name} ${artist} full video song`,
     `${name} ${artist} ${album} video`,
     `${name} ${artist} lyrical video`,
@@ -509,7 +522,8 @@ function buildVideoSearchQueries(song) {
     `${name} ${langHint} song video`,
     `${name} ${album} song`,
     `${name} ${artist} song`,
-    `${name} official song`
+    `${name} official song`,
+    `${name} ${album} ${langHint} video`
   ];
 
   const seen = new Set();
@@ -811,10 +825,13 @@ async function findVocalHideAlternative(song) {
   const queries = [
     `${title} ${artist} karaoke`,
     `${title} ${artist} instrumental`,
+    `${title} karaoke track`,
     `${title} minus one`,
     `${title} backing track`,
     `${title} music only`,
-    `${title} without vocals`
+    `${title} without vocals`,
+    `${title} ${artist} unplugged karaoke`,
+    `${title} instrumental version`
   ];
 
   let best = null;
@@ -893,9 +910,10 @@ function ensureAudioGraph() {
     audioMediaSource.connect(audioNormalGain);
     audioNormalGain.connect(audioContext.destination);
 
-    // Frequency-band-isolated center-channel cancellation
-    // Only cancels center content in vocal range (200Hz-5kHz)
-    // Preserves bass (<200Hz) and treble (>5kHz) stereo imaging
+    // Frequency-band-isolated center-channel cancellation (v37 improved)
+    // Cancels center content in extended vocal range (200Hz-6kHz)
+    // Uses partial cancellation (0.92) for more natural sound
+    // Preserves bass (<200Hz) and treble (>6kHz) stereo imaging
     const splitter = audioContext.createChannelSplitter(2);
     const merger = audioContext.createChannelMerger(2);
     audioMediaSource.connect(splitter);
@@ -908,14 +926,17 @@ function ensureAudioGraph() {
     splitter.connect(lpL, 0); lpL.connect(merger, 0, 0);
     splitter.connect(lpR, 1); lpR.connect(merger, 0, 1);
 
-    // Band-pass: 200Hz-5kHz — apply center cancellation (removes vocals)
+    // Band-pass: 200Hz-6kHz — apply center cancellation (removes vocals + sibilance)
+    // Center freq = sqrt(200*6000) ≈ 1095Hz, Q ≈ center/(hi-lo) ≈ 0.19
     const bpL = audioContext.createBiquadFilter();
-    bpL.type = 'bandpass'; bpL.frequency.value = 1000; bpL.Q.value = 0.5;
+    bpL.type = 'bandpass'; bpL.frequency.value = 1100; bpL.Q.value = 0.19;
     const bpR = audioContext.createBiquadFilter();
-    bpR.type = 'bandpass'; bpR.frequency.value = 1000; bpR.Q.value = 0.5;
+    bpR.type = 'bandpass'; bpR.frequency.value = 1100; bpR.Q.value = 0.19;
+    // Partial cancellation: -0.92 instead of -1.0 preserves stereo depth
+    const CANCEL_STRENGTH = -0.92;
     const cancelLtoL = audioContext.createGain(); cancelLtoL.gain.value = 1;
-    const cancelRtoL = audioContext.createGain(); cancelRtoL.gain.value = -1;
-    const cancelLtoR = audioContext.createGain(); cancelLtoR.gain.value = -1;
+    const cancelRtoL = audioContext.createGain(); cancelRtoL.gain.value = CANCEL_STRENGTH;
+    const cancelLtoR = audioContext.createGain(); cancelLtoR.gain.value = CANCEL_STRENGTH;
     const cancelRtoR = audioContext.createGain(); cancelRtoR.gain.value = 1;
     splitter.connect(bpL, 0); splitter.connect(bpR, 1);
     bpL.connect(cancelLtoL); bpR.connect(cancelRtoL);
@@ -923,11 +944,11 @@ function ensureAudioGraph() {
     cancelLtoL.connect(merger, 0, 0); cancelRtoL.connect(merger, 0, 0);
     cancelLtoR.connect(merger, 0, 1); cancelRtoR.connect(merger, 0, 1);
 
-    // High-pass: above 5kHz — pass through unmodified (preserves cymbals/air)
+    // High-pass: above 6kHz — pass through unmodified (preserves cymbals/air)
     const hpL = audioContext.createBiquadFilter();
-    hpL.type = 'highpass'; hpL.frequency.value = 5000;
+    hpL.type = 'highpass'; hpL.frequency.value = 6000;
     const hpR = audioContext.createBiquadFilter();
-    hpR.type = 'highpass'; hpR.frequency.value = 5000;
+    hpR.type = 'highpass'; hpR.frequency.value = 6000;
     splitter.connect(hpL, 0); hpL.connect(merger, 0, 0);
     splitter.connect(hpR, 1); hpR.connect(merger, 0, 1);
 
@@ -1653,14 +1674,11 @@ function playRandomSong() {
   bollywoodCategoryPool = null;
   activeCollectionPool = null;
   activeLanguage = 'telugu';
-  eraLock = null; // Clear era lock when explicitly playing random
+  eraLock = null;
+  prefetchQueue = []; // flush — language changed
   updateEraLockBadge();
-  // Pull from prefetch queue if available
   let song = null;
-  if (prefetchQueue.length > 0) {
-    song = prefetchQueue[0].song;
-  }
-  if (!song) {
+  {
     const excludeId = currentSong ? currentSong.id : null;
     const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
     song = smartPickRandom(teluguDb, excludeId);
@@ -2009,20 +2027,24 @@ function _activateYouTubeIframe(videoId, startSeconds) {
 }
 
 async function _fetchFromInnerTube(query, limit = 8) {
-  // Try multiple client configs — some may bypass CORS/bot detection
+  // Try multiple client configs — some bypass CORS/bot detection better
   const clients = [
-    { clientName: 'WEB', clientVersion: '2.20240101' },
-    { clientName: 'MWEB', clientVersion: '2.20240101' }
+    { clientName: 'WEB', clientVersion: '2.20250301.00.00' },
+    { clientName: 'MWEB', clientVersion: '2.20250301.00.00' },
+    { clientName: 'ANDROID', clientVersion: '19.29.37', platform: 'MOBILE' },
+    { clientName: 'IOS', clientVersion: '19.29.1', platform: 'MOBILE' }
   ];
   for (const client of clients) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 2600 : 3600);
+    const t = setTimeout(() => ctrl.abort(), IS_MOBILE ? 3200 : 4500);
     try {
-      const res = await fetch('https://www.youtube.com/youtubei/v1/search', {
+      const body = { context: { client: { clientName: client.clientName, clientVersion: client.clientVersion } }, query };
+      if (client.platform) body.context.client.platform = client.platform;
+      const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: ctrl.signal,
-        body: JSON.stringify({ context: { client }, query })
+        body: JSON.stringify(body)
       });
       clearTimeout(t);
       if (!res.ok) continue;
@@ -2050,6 +2072,11 @@ async function _fetchFromInnerTube(query, limit = 8) {
 }
 
 async function _fetchFromYouTubeAPI(query, limit = 8) {
+  // Auto-reset quota flag after 1 hour (quota resets daily but try periodically)
+  if (youtubeApiQuotaExhausted && youtubeApiQuotaExhaustedAt && Date.now() - youtubeApiQuotaExhaustedAt > 3600000) {
+    youtubeApiQuotaExhausted = false;
+    youtubeApiQuotaExhaustedAt = 0;
+  }
   if (typeof YOUTUBE_API_KEY === 'undefined' || !YOUTUBE_API_KEY || youtubeApiQuotaExhausted) throw new Error('no key');
   const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(query)}&maxResults=${limit}&key=${YOUTUBE_API_KEY}`;
   const ctrl = new AbortController();
@@ -2063,10 +2090,11 @@ async function _fetchFromYouTubeAPI(query, limit = 8) {
       const reason = data?.error?.errors?.[0]?.reason || '';
       if (reason === 'quotaExceeded' || reason === 'rateLimitExceeded') {
         youtubeApiQuotaExhausted = true;
+        youtubeApiQuotaExhaustedAt = Date.now();
       }
       throw new Error('api-error');
     }
-    if (res.status === 429) { youtubeApiQuotaExhausted = true; throw new Error('quota'); }
+    if (res.status === 429) { youtubeApiQuotaExhausted = true; youtubeApiQuotaExhaustedAt = Date.now(); throw new Error('quota'); }
     if (!res.ok) throw new Error('bad');
     const data = await res.json();
     const items = Array.isArray(data?.items) ? data.items : [];
@@ -2093,7 +2121,8 @@ async function _fetchFromPiped(instance, query) {
     clearTimeout(t);
     if (!res.ok) throw new Error('bad');
     const data = await res.json();
-    const items = Array.isArray(data?.items) ? data.items : [];
+    // Piped API returns items[] or directly an array
+    const items = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
     const candidates = items.map(item => ({
       videoId: String(item?.url || '').replace('/watch?v=', '').split('&')[0].trim(),
       title: item?.title || '',
@@ -2191,39 +2220,24 @@ async function fetchYouTubeVideoId(song) {
   const queries = buildVideoSearchQueries(song);
   console.log('[Video Search] Starting for:', song.name, '| Queries:', queries.length);
 
-  // Fast path first: YouTube Data API only. This was previously the most reliable path.
-  for (const query of queries) {
-    try {
-      const apiCandidates = await _fetchFromYouTubeAPI(query, 8);
-      const apiVideoId = pickVideoIdFromCandidates(song, apiCandidates, 0.3)
-        || fallbackVideoIdFromCandidates(song, apiCandidates);
-      if (apiVideoId) {
-        videoSearchCache[song.id] = { videoId: apiVideoId, searched: true };
-        _cacheVideoId(song.id, apiVideoId);
-        return apiVideoId;
-      }
-    } catch (e) { console.log('[Video Search] YouTube API failed:', e.message); }
-  }
-
-  console.log('[Video Search] YouTube API exhausted, trying InnerTube + proxies...');
-  for (const query of queries) {
-    // Try ALL sources in parallel: InnerTube, CORS proxies, Piped, Invidious
+  // Strategy: for each query, fire ALL sources in parallel (API + InnerTube + proxies)
+  // This maximizes chances of finding a result even when some sources are down
+  for (let qi = 0; qi < queries.length; qi++) {
+    const query = queries[qi];
     const allFetches = [
-      _fetchFromInnerTube(query, 8),
-      _fetchFromCORSProxy(query),
-      ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query)),
-      ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query))
+      _fetchFromYouTubeAPI(query, 8).catch(() => []),
+      _fetchFromInnerTube(query, 8).catch(() => []),
+      _fetchFromCORSProxy(query).catch(() => []),
+      ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query).catch(() => [])),
+      ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query).catch(() => []))
     ];
     try {
-      const settled = await Promise.allSettled(allFetches);
-      const fulfilled = settled.filter(entry => entry.status === 'fulfilled');
-      const failed = settled.filter(entry => entry.status === 'rejected');
-      console.log(`[Video Search] Query "${query.slice(0,40)}": ${fulfilled.length} sources succeeded, ${failed.length} failed`);
-      const allCandidates = fulfilled
-        .flatMap(entry => Array.isArray(entry.value) ? entry.value : []);
-      console.log(`[Video Search] Total candidates: ${allCandidates.length}`);
+      const results = await Promise.all(allFetches);
+      const allCandidates = results.flat().filter(c => c?.videoId);
+      const sourceCount = results.filter(r => r.length > 0).length;
+      console.log(`[Video Search] Q${qi+1} "${query.slice(0,40)}": ${sourceCount} sources, ${allCandidates.length} candidates`);
 
-      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.16)
+      const videoId = pickVideoIdFromCandidates(song, allCandidates, qi === 0 ? 0.25 : 0.16)
         || fallbackVideoIdFromCandidates(song, allCandidates);
 
       if (videoId) {
@@ -2233,9 +2247,31 @@ async function fetchYouTubeVideoId(song) {
         return videoId;
       }
     } catch { /* all sources failed, try next query */ }
+
+    // Only try first 3-4 queries to avoid excessive API calls
+    if (qi >= 3 && !youtubeApiQuotaExhausted) break;
   }
 
-  videoSearchCache[song.id] = { videoId: null, searched: true, retryAfter: Date.now() + 3 * 60 * 1000 };
+  // Last resort: try a simplified direct search with just song name
+  try {
+    const simpleName = decodeHtml(song?.name || '').trim();
+    const simpleQuery = `${simpleName} official music video`;
+    const lastChance = await _fetchFromInnerTube(simpleQuery, 5).catch(() => []);
+    const corsChance = await _fetchFromCORSProxy(simpleQuery).catch(() => []);
+    const finalCandidates = [...lastChance, ...corsChance].filter(c => c?.videoId);
+    if (finalCandidates.length) {
+      const videoId = pickVideoIdFromCandidates(song, finalCandidates, 0.12)
+        || fallbackVideoIdFromCandidates(song, finalCandidates);
+      if (videoId) {
+        console.log('[Video Search] Last resort found:', videoId);
+        videoSearchCache[song.id] = { videoId, searched: true };
+        _cacheVideoId(song.id, videoId);
+        return videoId;
+      }
+    }
+  } catch {}
+
+  videoSearchCache[song.id] = { videoId: null, searched: true, retryAfter: Date.now() + 60 * 1000 };
   return null;
 }
 
@@ -2382,6 +2418,11 @@ function playSong(song) {
     audio.load();
   }
   isLoadingNext = true;
+  // Safety timeout: reset isLoadingNext if audio never starts (prevents playNext from getting stuck)
+  clearTimeout(window._loadingNextTimeout);
+  window._loadingNextTimeout = setTimeout(() => {
+    if (isLoadingNext) { isLoadingNext = false; showLoading(false); }
+  }, 15000);
   currentSongStreamRefreshed = false;
   if (shouldResetVocalHideForSong(song)) {
     clearVocalHideState();
@@ -2520,7 +2561,11 @@ function playNext() {
   // Smart shuffle: pull from prefetch queue first, fallback to smartPickRandom
   let song = null;
   if (prefetchQueue.length > 0 && !activeCollectionPool && !(bollywoodCategoryPool && activeLanguage === 'hindi')) {
-    song = prefetchQueue[0].song;
+    const candidate = prefetchQueue[0].song;
+    // Verify language matches — queue may have wrong-language songs after switch
+    const candLang = (candidate?.language || '').toLowerCase() === 'hindi' ? 'hindi' : 'telugu';
+    if (candLang === activeLanguage) song = candidate;
+    else prefetchQueue = []; // flush stale queue
   }
   if (!song) {
     const db = getActiveDB();
@@ -3343,8 +3388,8 @@ function fallbackHomeData(language) {
   }
   const newReleases = [...curatedRecent, ...otherRecent].slice(0, 12);
 
-  // Top 50: curated artists only, sort by year desc, deduplicate by name
-  const curatedSongs = source.filter(isCurated);
+  // Top 50: curated artists only, filter filler, sort by year desc, deduplicate by name
+  const curatedSongs = source.filter(s => isCurated(s) && (!s.duration || s.duration >= 120));
   curatedSongs.sort((a, b) => parseInt(b.year || 0) - parseInt(a.year || 0));
   const seenNames = new Set();
   const top50 = [];
@@ -3539,58 +3584,54 @@ let touchStartY = 0;
 let touchStartTime = 0;
 let swiping = false;
 
-function initSwipe() {
-  const artContainer = document.querySelector('.album-art-container');
-  if (!artContainer) return;
-
-  artContainer.addEventListener('touchstart', (e) => {
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchStartTime = Date.now();
-    swiping = true;
-    artContainer.style.transition = 'none';
+function _attachSwipe(el) {
+  if (!el) return;
+  let sx = 0, sy = 0, st = 0, sw = false;
+  el.addEventListener('touchstart', (e) => {
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    st = Date.now(); sw = true;
+    el.style.transition = 'none';
   }, { passive: true });
-
-  artContainer.addEventListener('touchmove', (e) => {
-    if (!swiping) return;
-    const dx = e.touches[0].clientX - touchStartX;
-    const dy = Math.abs(e.touches[0].clientY - touchStartY);
-    if (dy > Math.abs(dx)) { swiping = false; artContainer.style.transform = ''; artContainer.style.opacity = '1'; return; }
+  el.addEventListener('touchmove', (e) => {
+    if (!sw) return;
+    const dx = e.touches[0].clientX - sx;
+    const dy = Math.abs(e.touches[0].clientY - sy);
+    if (dy > Math.abs(dx)) { sw = false; el.style.transform = ''; el.style.opacity = '1'; return; }
     const clamped = Math.max(-120, Math.min(120, dx));
-    const opacity = 1 - Math.abs(clamped) / 200;
-    artContainer.style.transform = `translateX(${clamped}px) rotate(${clamped * 0.05}deg)`;
-    artContainer.style.opacity = opacity;
+    el.style.transform = `translateX(${clamped}px) rotate(${clamped * 0.05}deg)`;
+    el.style.opacity = 1 - Math.abs(clamped) / 200;
   }, { passive: true });
-
-  artContainer.addEventListener('touchend', (e) => {
-    if (!swiping) return;
-    swiping = false;
-    const dx = e.changedTouches[0].clientX - touchStartX;
-    const elapsed = Date.now() - touchStartTime;
-    const velocity = Math.abs(dx) / Math.max(elapsed, 1);
-
-    artContainer.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
-
+  el.addEventListener('touchend', (e) => {
+    if (!sw) return;
+    sw = false;
+    const dx = e.changedTouches[0].clientX - sx;
+    const velocity = Math.abs(dx) / Math.max(Date.now() - st, 1);
+    el.style.transition = 'transform 0.3s ease, opacity 0.3s ease';
     if (Math.abs(dx) > 80 || velocity > 0.5) {
       const dir = dx > 0 ? 1 : -1;
-      artContainer.style.transform = `translateX(${dir * 300}px) rotate(${dir * 15}deg)`;
-      artContainer.style.opacity = '0';
+      el.style.transform = `translateX(${dir * 300}px) rotate(${dir * 15}deg)`;
+      el.style.opacity = '0';
       setTimeout(() => {
         if (dir > 0) playPrev(); else playNext();
-        artContainer.style.transition = 'none';
-        artContainer.style.transform = `translateX(${-dir * 200}px)`;
-        artContainer.style.opacity = '0';
+        el.style.transition = 'none';
+        el.style.transform = `translateX(${-dir * 200}px)`;
+        el.style.opacity = '0';
         requestAnimationFrame(() => {
-          artContainer.style.transition = 'transform 0.35s ease, opacity 0.35s ease';
-          artContainer.style.transform = '';
-          artContainer.style.opacity = '1';
+          el.style.transition = 'transform 0.35s ease, opacity 0.35s ease';
+          el.style.transform = '';
+          el.style.opacity = '1';
         });
       }, 200);
     } else {
-      artContainer.style.transform = '';
-      artContainer.style.opacity = '1';
+      el.style.transform = '';
+      el.style.opacity = '1';
     }
   }, { passive: true });
+}
+
+function initSwipe() {
+  _attachSwipe(document.querySelector('.album-art-container'));
+  _attachSwipe(document.getElementById('song-video-container'));
 }
 
 // ═══ SEARCH ═══
@@ -3722,7 +3763,7 @@ function performSearch(query) {
   }
 
   ranked.sort((a, b) => b.score - a.score);
-  const result = ranked.slice(0, 80).map(item => item.song);
+  const result = ranked.slice(0, 40).map(item => item.song);
 
   const nextPoolLimit = isIncremental ? 4500 : 6500;
   const nextPool = ranked.slice(0, nextPoolLimit).map(item => {
@@ -3808,16 +3849,18 @@ function initSearch() {
   }, { once: true });
   let debounce;
   let apiDebounce;
+  let searchRafId = 0;
   input.addEventListener('input', () => {
     clearTimeout(debounce);
     clearTimeout(apiDebounce);
     const q = input.value.trim();
     clearBtn.style.display = q ? 'block' : 'none';
 
-    // Immediate local DB results
+    // Local DB results — defer render to next frame to keep input responsive
     debounce = setTimeout(() => {
-      renderSearchResults(performSearch(q), q);
-    }, IS_MOBILE ? 180 : 120);
+      cancelAnimationFrame(searchRafId);
+      searchRafId = requestAnimationFrame(() => renderSearchResults(performSearch(q), q));
+    }, IS_MOBILE ? 200 : 150);
 
     // Async API results (merge with local after slight delay)
     if (q.length >= 2) {
@@ -3827,12 +3870,12 @@ function initSearch() {
         const apiResults = await searchJioSaavnAPI(q);
         if (input.value.trim() !== q) return;
         if (apiResults.length) {
-          // Store in map so playSongFromSearch can find them
           for (const s of apiResults) apiSearchResultsMap.set(s.id, s);
           const localResults = performSearch(q);
-          renderSearchResults(mergeSearchResults(apiResults, localResults), q);
+          cancelAnimationFrame(searchRafId);
+          searchRafId = requestAnimationFrame(() => renderSearchResults(mergeSearchResults(apiResults, localResults), q));
         }
-      }, IS_MOBILE ? 400 : 300);
+      }, IS_MOBILE ? 450 : 350);
     }
   });
 }
@@ -3847,13 +3890,10 @@ function playRandomBollywood() {
   bollywoodCategoryPool = null;
   activeCollectionPool = null;
   eraLock = null;
+  prefetchQueue = []; // flush — language changed
   updateEraLockBadge();
-  // Pull from prefetch queue if available
   let song = null;
-  if (prefetchQueue.length > 0 && activeLanguage === 'hindi') {
-    song = prefetchQueue[0].song;
-  }
-  if (!song) {
+  {
     const excludeId = currentSong ? currentSong.id : null;
     const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
     song = smartPickRandom(hindiDb, excludeId);
