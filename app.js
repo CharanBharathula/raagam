@@ -1,6 +1,7 @@
 // app.js — Raagam v6: Auth-gated Telugu & Bollywood Music Player with Offline Support
 const audio = new Audio();
 audio.crossOrigin = 'anonymous';
+audio.preload = 'auto';
 let currentSong = null;
 let isPlaying = false;
 let history = [];
@@ -56,8 +57,27 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '32';
+const RELEASE_MARKER = '33';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
+
+const CURATED_TELUGU_ARTISTS = [
+  's. p. balasubrahmanyam', 'ghantasala', 'p. susheela', 's. janaki',
+  'sid sriram', 'armaan malik', 'anurag kulkarni', 'haricharan',
+  'shreya ghoshal', 'sunitha', 'chinmayi', 'mangli',
+  'thaman s', 'devi sri prasad', 's. s. thaman', 'm. m. keeravani',
+  'ilaiyaraaja', 'a. r. rahman', 'shankar mahadevan', 'karthik',
+  'sagar', 'rahul sipligunj', 'javed ali', 'krishna chaitanya',
+  'ramya behara', 'mohana bhogaraju', 'yazin nizar', 'roll rida'
+];
+const CURATED_HINDI_ARTISTS = [
+  'arijit singh', 'shreya ghoshal', 'lata mangeshkar', 'kishore kumar',
+  'mohammed rafi', 'sonu nigam', 'atif aslam', 'jubin nautiyal',
+  'neha kakkar', 'armaan malik', 'pritam', 'a. r. rahman',
+  'vishal mishra', 'b praak', 'darshan raval', 'kumar sanu',
+  'udit narayan', 'alka yagnik', 'asha bhosle', 'sunidhi chauhan',
+  'honey singh', 'badshah', 'stebin ben', 'shaan', 'kk',
+  'mohit chauhan', 'mika singh', 'palak muchhal', 'tulsi kumar'
+];
 let hasShownCodecWarning = false;
 
 function supportsAacMp4() {
@@ -72,6 +92,9 @@ function supportsAacMp4() {
 // Offline download tracking
 let downloadedSongs = {}; // { songId: { name, artists, image, audio, album, year, language } }
 let downloadingUrls = new Set(); // Currently downloading URLs
+
+// Preload next song for smoother playback
+let preloadedNext = null; // { songId, url, el }
 
 // Song preview (Spotify-like hover) state
 const previewAudio = new Audio();
@@ -292,7 +315,7 @@ function fallbackVideoIdFromCandidates(song, candidates) {
     }
   }
 
-  if (best && best.score >= -0.2) return best.videoId;
+  if (best && best.score >= 0.15) return best.videoId;
 
   const nameNorm = normalizeForMatch(compactSearchPhrase(song?.name || '') || song?.name || '');
   const artistNorm = normalizeForMatch(compactSearchPhrase(getSongArtistSeed(song)) || getSongArtistSeed(song));
@@ -305,8 +328,7 @@ function fallbackVideoIdFromCandidates(song, candidates) {
       if (!artistNorm || titleNorm.includes(artistNorm) || channelNorm.includes(artistNorm)) return id;
     }
   }
-  const first = (candidates || []).find(c => String(c?.videoId || '').trim().length === 11);
-  return first?.videoId || null;
+  return null;
 }
 
 function updateVideoAvailability(hasVideo) {
@@ -352,7 +374,7 @@ function ensureVideoSearch(song) {
         currentVideoContent = 'youtube';
         updateVideoAvailability(true);
       } else {
-        updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, null));
+        updateVideoAvailability(false);
       }
       return videoId;
     })
@@ -492,13 +514,13 @@ async function findVocalHideAlternative(song) {
     }
   }
 
-  if (best && best.score >= 0.55) {
+  if (best && best.score >= 0.45) {
     vocalAltCache[song.id] = { status: 'hit', song: best.song, cachedAt: Date.now() };
     saveVocalAltCache();
     return best.song;
   }
 
-  vocalAltCache[song.id] = { status: 'miss', retryAfter: Date.now() + 12 * 60 * 60 * 1000 };
+  vocalAltCache[song.id] = { status: 'miss', retryAfter: Date.now() + 1 * 60 * 60 * 1000 };
   saveVocalAltCache();
   return null;
 }
@@ -754,6 +776,7 @@ function loadVoiceMode() {
 }
 
 function cycleVoiceMode() {
+  unlockAudioGraph();
   const next = voiceMode === 'normal' ? 'vocal' : 'normal';
   voiceMode = next;
   localStorage.setItem(VOICE_MODE_KEY, voiceMode);
@@ -795,6 +818,23 @@ function getAudioFallbackUrls(url) {
     }
   }
   return urls;
+}
+
+function preloadNextSong() {
+  let nextSong = null;
+  if (history.length > historyIndex + 1) {
+    nextSong = history[historyIndex + 1];
+  } else if (activeCollectionPool?.length > 1) {
+    const idx = activeCollectionPool.findIndex(s => s.id === currentSong?.id);
+    if (idx >= 0 && idx < activeCollectionPool.length - 1) nextSong = activeCollectionPool[idx + 1];
+  }
+  if (!nextSong?.audio || preloadedNext?.songId === nextSong.id) return;
+  const urls = getAudioFallbackUrls(nextSong.audio);
+  if (!urls.length) return;
+  const pre = new Audio();
+  pre.preload = 'auto';
+  pre.src = urls[0];
+  preloadedNext = { songId: nextSong.id, url: urls[0], el: pre };
 }
 
 function tryNextAudioFallback() {
@@ -1517,7 +1557,16 @@ function switchToVideoMode() {
     const waitSearch = ensureVideoSearch(currentSong);
     if (waitSearch) {
       const songIdAtSwitch = currentSong?.id;
+      const searchTimeoutId = setTimeout(() => {
+        if (!currentSong || currentSong.id !== songIdAtSwitch) return;
+        if (currentMediaMode !== 'video') return;
+        if (badge && badge.textContent === 'SEARCHING...') {
+          badge.textContent = 'CANVAS';
+          updateVideoAvailability(false);
+        }
+      }, 12000);
       waitSearch.then(videoId => {
+        clearTimeout(searchTimeoutId);
         // Only activate if user is still on the same song and still in video mode
         if (!currentSong || currentSong.id !== songIdAtSwitch) return;
         if (currentMediaMode !== 'video') return;
@@ -1529,6 +1578,7 @@ function switchToVideoMode() {
           showToast('YouTube video not available for this song');
         }
       }).catch(() => {
+        clearTimeout(searchTimeoutId);
         if (badge) badge.textContent = 'CANVAS';
         showToast('Video search failed, try again');
       });
@@ -2064,6 +2114,7 @@ function playSong(song) {
     if (voiceMode === 'vocal') {
       applyVocalHideForCurrentSong();
     }
+    setTimeout(preloadNextSong, 2000);
   }).catch(e => {
     console.error('Play failed:', e);
     // Don't retry here — let the audio 'error' event handler deal with retries
@@ -2832,10 +2883,22 @@ function renderCollections(containerId, collections, language) {
     const title = decodeHtml(col.title || 'Collection');
     const subtitle = decodeHtml(col.subtitle || '');
     const count = Number(col.count || (col.songIds || []).length || 0);
+    // Get cover image from collection or resolve from first song
+    let coverImg = col.coverImage || '';
+    if (!coverImg && col.songIds?.[0]) {
+      const firstSong = findSongByIdAndLanguage(col.songIds[0], language);
+      coverImg = firstSong?.image || '';
+    }
+    const imgHtml = coverImg
+      ? `<img class="collection-cover" src="${escAttr(coverImg)}" alt="" loading="lazy" onerror="this.style.display='none'" />`
+      : `<div class="collection-cover collection-cover-placeholder"></div>`;
     return `<div class="home-collection-card" onclick="playCollectionByKey('${escAttr(key)}')">
-      <div class="home-collection-title">${escHtml(title)}</div>
-      <div class="home-collection-sub">${escHtml(subtitle)}</div>
-      <div class="home-collection-count">${count} songs • Play all</div>
+      ${imgHtml}
+      <div class="collection-text">
+        <div class="home-collection-title">${escHtml(title)}</div>
+        <div class="home-collection-sub">${escHtml(subtitle)}</div>
+        <div class="home-collection-count">${count} songs • Play all</div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -2901,30 +2964,68 @@ function fallbackHomeData(language) {
   const source = language === 'hindi'
     ? ((typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [])
     : ((typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : []);
-  const sortedByYear = source.slice().sort((a, b) => parseInt(b.year || 0) - parseInt(a.year || 0));
+  const curatedArtists = language === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
+  const curatedSet = new Set(curatedArtists);
+
+  function isCurated(song) {
+    const artists = decodeHtml(String(song?.artists || '')).toLowerCase();
+    return curatedArtists.some(a => artists.includes(a));
+  }
+
+  // New Releases: last 3 years, prefer curated artists, shuffle
+  const currentYear = new Date().getFullYear();
+  const recentSongs = source.filter(s => parseInt(s.year || 0) >= currentYear - 3);
+  const curatedRecent = recentSongs.filter(isCurated);
+  const otherRecent = recentSongs.filter(s => !isCurated(s));
+  // Shuffle curated recent
+  for (let i = curatedRecent.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [curatedRecent[i], curatedRecent[j]] = [curatedRecent[j], curatedRecent[i]];
+  }
+  const newReleases = [...curatedRecent, ...otherRecent].slice(0, 12);
+
+  // Top 50: curated artists only, sort by year desc, deduplicate by name
+  const curatedSongs = source.filter(isCurated);
+  curatedSongs.sort((a, b) => parseInt(b.year || 0) - parseInt(a.year || 0));
+  const seenNames = new Set();
+  const top50 = [];
+  for (const song of curatedSongs) {
+    const nameNorm = normalizeForMatch(song.name || '');
+    if (seenNames.has(nameNorm)) continue;
+    seenNames.add(nameNorm);
+    top50.push(song);
+    if (top50.length >= 50) break;
+  }
+
+  // Collections: match curated artists, top 6 by count
   const byArtist = {};
   source.forEach(song => {
-    const primary = decodeHtml(String(song?.artists || '').split(',')[0] || '').trim();
-    if (!primary) return;
-    if (!byArtist[primary]) byArtist[primary] = [];
-    byArtist[primary].push(song);
+    const artistsStr = decodeHtml(String(song?.artists || '')).toLowerCase();
+    for (const ca of curatedArtists) {
+      if (artistsStr.includes(ca)) {
+        if (!byArtist[ca]) byArtist[ca] = [];
+        byArtist[ca].push(song);
+        break;
+      }
+    }
   });
 
   const collections = Object.entries(byArtist)
     .sort((a, b) => b[1].length - a[1].length)
     .slice(0, 6)
-    .map(([artist, songs]) => ({
-      title: artist,
-      subtitle: language === 'hindi' ? 'Popular Bollywood singer hits' : 'Popular Telugu singer hits',
-      count: songs.length,
-      songIds: songs.slice(0, 30).map(song => song.id)
-    }));
+    .map(([artist, songs]) => {
+      // Sort by year desc for each artist collection
+      songs.sort((a, b) => parseInt(b.year || 0) - parseInt(a.year || 0));
+      return {
+        title: artist.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+        subtitle: language === 'hindi' ? 'Bollywood Hits' : 'Telugu Hits',
+        count: songs.length,
+        songIds: songs.slice(0, 30).map(song => song.id),
+        coverImage: songs[0]?.image || ''
+      };
+    });
 
-  const data = {
-    newReleases: sortedByYear.slice(0, 12),
-    top50: source.slice(0, 50),
-    collections
-  };
+  const data = { newReleases, top50, collections };
   fallbackHomeCache[language] = data;
   return data;
 }
@@ -3606,7 +3707,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('npb-play')?.addEventListener('click', togglePlay);
   document.getElementById('npb-next')?.addEventListener('click', () => playNext());
   document.getElementById('progress-bar')?.addEventListener('click', seekTo);
-  document.getElementById('voice-mode-btn')?.addEventListener('click', unlockAudioGraph);
+  document.getElementById('voice-mode-btn')?.addEventListener('click', cycleVoiceMode);
   initProgressDrag();
   loadVoiceMode();
   if (!IS_MOBILE) warmSearchIndex();
