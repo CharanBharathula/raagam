@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '38';
+const RELEASE_MARKER = '39';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -188,7 +188,10 @@ function _getAdaptivePrefetchDepth() {
       case '3g': return { songs: 6, audio: 2, resolveVideo: true };
     }
   }
-  return { songs: IS_MOBILE ? 8 : 15, audio: IS_MOBILE ? 2 : 4, resolveVideo: true };
+  // More aggressive prefetch when in video mode — resolve more video IDs ahead
+  const inVideoMode = currentMediaMode === 'video';
+  const songCount = IS_MOBILE ? (inVideoMode ? 10 : 8) : (inVideoMode ? 20 : 15);
+  return { songs: songCount, audio: IS_MOBILE ? 2 : 4, resolveVideo: true };
 }
 
 function _pureSmartPick(db, excludeIds, tempRecent, tempAlbums) {
@@ -1910,6 +1913,8 @@ function switchToVideoMode() {
     delete videoSearchCache[currentSong.id];
   }
   ensureVideoSearch(currentSong);
+  // Trigger prefetch pipeline to resolve video IDs for upcoming songs
+  setTimeout(() => prefetchPipeline(), 100);
 
   currentMediaMode = 'video';
   const audioBtn   = document.getElementById('media-audio-btn');
@@ -2549,27 +2554,94 @@ function playSong(song) {
 
   const preloadedUrl = _pullPreloadedAudioUrl(song.id);
   audio.src = preloadedUrl || currentAudioFallbackUrls[currentAudioFallbackIndex];
-  audio.play().then(() => {
-    isPlaying = true; isLoadingNext = false; showLoading(false);
-    consecutiveErrors = 0;
-    updatePlayBtn();
-    document.querySelector('.album-art-container')?.classList.add('playing');
-    saveRecent(song);
-    fetchLyrics(song);
-    if (window.aiEngine) window.aiEngine.trackPlay(song);
-    if (voiceMode === 'vocal') {
-      applyVocalHideForCurrentSong();
+
+  // If in video mode, wait for video ID to resolve before starting playback
+  // This ensures audio and video start simultaneously
+  const videoReady = _waitForVideoReady(song);
+  videoReady.then(() => {
+    audio.play().then(() => {
+      isPlaying = true; isLoadingNext = false; showLoading(false);
+      consecutiveErrors = 0;
+      updatePlayBtn();
+      document.querySelector('.album-art-container')?.classList.add('playing');
+      saveRecent(song);
+      fetchLyrics(song);
+      if (window.aiEngine) window.aiEngine.trackPlay(song);
+      if (voiceMode === 'vocal') {
+        applyVocalHideForCurrentSong();
+      }
+      // If in video mode, activate iframe immediately at time 0
+      if (currentMediaMode === 'video' && currentVideoContent === 'youtube') {
+        const vid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
+        if (vid) _activateYouTubeIframe(vid, 0);
+      }
+      setTimeout(() => {
+        preloadNextSong();
+        _consumeFromQueue(song.id);
+        prefetchPipeline();
+      }, 500);
+    }).catch(e => {
+      console.error('Play failed:', e);
+      isLoadingNext = false; showLoading(false);
+    });
+  });
+}
+
+// Wait for video to be ready (or timeout) before allowing playback
+function _waitForVideoReady(song) {
+  // If not in video mode, start immediately — no waiting
+  if (currentMediaMode !== 'video') return Promise.resolve();
+
+  // If video ID is already known (prefetch cache / localStorage), start immediately
+  const knownVid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
+  if (knownVid) {
+    // Pre-warm iframe so it's ready when audio starts
+    _prewarmYouTubeIframe(knownVid);
+    currentVideoContent = 'youtube';
+    return Promise.resolve();
+  }
+
+  // Video ID not yet known — wait for search to complete (max 4s timeout)
+  // Show badge as LOADING while waiting
+  const badge = document.getElementById('video-mode-badge');
+  if (badge) badge.textContent = 'LOADING...';
+
+  return new Promise(resolve => {
+    const timeout = setTimeout(() => {
+      // Timeout: start audio anyway, video will catch up later
+      if (badge && badge.textContent === 'LOADING...') badge.textContent = 'SEARCHING...';
+      resolve();
+    }, 4000);
+
+    // Check if pendingVideoSearch exists
+    if (pendingVideoSearch) {
+      pendingVideoSearch.then(videoId => {
+        clearTimeout(timeout);
+        if (videoId && currentSong?.id === song.id) {
+          _prewarmYouTubeIframe(videoId);
+          currentVideoContent = 'youtube';
+          if (badge) badge.textContent = 'YOUTUBE';
+        }
+        resolve();
+      }).catch(() => { clearTimeout(timeout); resolve(); });
+    } else {
+      // No pending search — start the search and wait briefly
+      const search = ensureVideoSearch(song);
+      if (search) {
+        search.then(videoId => {
+          clearTimeout(timeout);
+          if (videoId && currentSong?.id === song.id) {
+            _prewarmYouTubeIframe(videoId);
+            currentVideoContent = 'youtube';
+            if (badge) badge.textContent = 'YOUTUBE';
+          }
+          resolve();
+        }).catch(() => { clearTimeout(timeout); resolve(); });
+      } else {
+        clearTimeout(timeout);
+        resolve();
+      }
     }
-    setTimeout(() => {
-      preloadNextSong();
-      _consumeFromQueue(song.id);
-      prefetchPipeline();
-    }, 500);
-  }).catch(e => {
-    console.error('Play failed:', e);
-    // Don't retry here — let the audio 'error' event handler deal with retries
-    // This prevents double-firing (both .catch and error event) causing rapid cycling
-    isLoadingNext = false; showLoading(false);
   });
 }
 
@@ -3854,18 +3926,91 @@ function renderSearchResults(results, query) {
     container.innerHTML = `<div class="search-empty-state"><div class="search-empty-icon">😔</div><p>No results for "${escHtml(query)}"</p><p class="search-hint">Try a different spelling or keyword</p></div>`;
     return;
   }
-  container.innerHTML = results.map(s => {
-    const isDl = isSongDownloaded(s);
-    const previewData = _buildPreviewAttr(s);
-    return `<div class="search-result-item" onclick="playSongFromSearch('${escAttr(s.id)}','${escAttr(s.language||'telugu')}')" data-preview-song="${previewData}">
-      <img class="search-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
-      <div class="search-info">
-        <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
-        <p>${escHtml(decodeHtml(s.artists||''))} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}${s._fromApi?'<span class="search-lang api">Live</span>':''}</p>
+
+  // Group songs by album/movie — show album headers for groups with 2+ songs
+  const albumGroups = new Map();
+  const queryNorm = normalizeForMatch(query);
+  for (const s of results) {
+    const album = decodeHtml(String(s.album || '')).trim();
+    if (!album) continue;
+    const albumKey = normalizeForMatch(album);
+    if (!albumGroups.has(albumKey)) albumGroups.set(albumKey, { name: album, songs: [], image: s.image, lang: s.language });
+    albumGroups.get(albumKey).songs.push(s);
+  }
+
+  // Find albums that match the query and have multiple songs — show as movie cards
+  const movieMatches = [];
+  for (const [key, group] of albumGroups) {
+    if (group.songs.length >= 2 && key.includes(queryNorm)) {
+      movieMatches.push(group);
+    }
+  }
+  // Sort movie matches by song count desc
+  movieMatches.sort((a, b) => b.songs.length - a.songs.length);
+
+  let html = '';
+
+  // Render movie/album cards at top (max 3 movie groups)
+  if (movieMatches.length) {
+    html += '<div class="search-section-label">Movies / Albums</div>';
+    for (const group of movieMatches.slice(0, 3)) {
+      const albumId = normalizeForMatch(group.name).replace(/\s+/g, '_');
+      html += `<div class="search-movie-card" onclick="toggleMovieSongs('${escAttr(albumId)}')">
+        <img class="search-movie-thumb" src="${escAttr(group.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+        <div class="search-movie-info">
+          <h4>${escHtml(group.name)}</h4>
+          <p>${group.songs.length} songs · ${group.lang === 'hindi' ? 'Hindi' : 'Telugu'}</p>
+        </div>
+        <span class="search-movie-arrow" id="arrow-${escAttr(albumId)}">▸</span>
       </div>
-      <button class="search-dl-btn" data-download-id="${escAttr(s.id)}" onclick="event.stopPropagation(); ${isDl ? `removeDownload('${escAttr(s.id)}')` : `downloadSongById('${escAttr(s.id)}')`}" title="${isDl ? 'Remove' : 'Download'}">${isDl ? '✓' : '↓'}</button>
-    </div>`;
-  }).join('');
+      <div class="search-movie-songs hidden" id="movie-${escAttr(albumId)}">
+        ${group.songs.map(s => _renderSearchSongItem(s)).join('')}
+      </div>`;
+    }
+    html += '<div class="search-section-label">Songs</div>';
+  }
+
+  // Render individual song results
+  html += results.map(s => _renderSearchSongItem(s)).join('');
+  container.innerHTML = html;
+}
+
+function _renderSearchSongItem(s) {
+  const isDl = isSongDownloaded(s);
+  const previewData = _buildPreviewAttr(s);
+  return `<div class="search-result-item" onclick="playSongFromSearch('${escAttr(s.id)}','${escAttr(s.language||'telugu')}')" data-preview-song="${previewData}">
+    <img class="search-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
+    <div class="search-info">
+      <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
+      <p>${escHtml(decodeHtml(s.artists||''))} ${s.album ? '<span class="search-album-tag">' + escHtml(decodeHtml(s.album)) + '</span>' : ''} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}${s._fromApi?'<span class="search-lang api">Live</span>':''}</p>
+    </div>
+    <button class="search-dl-btn" data-download-id="${escAttr(s.id)}" onclick="event.stopPropagation(); ${isDl ? `removeDownload('${escAttr(s.id)}')` : `downloadSongById('${escAttr(s.id)}')`}" title="${isDl ? 'Remove' : 'Download'}">${isDl ? '✓' : '↓'}</button>
+  </div>`;
+}
+
+function toggleMovieSongs(albumId) {
+  const songsEl = document.getElementById('movie-' + albumId);
+  const arrowEl = document.getElementById('arrow-' + albumId);
+  if (!songsEl) return;
+  songsEl.classList.toggle('hidden');
+  if (arrowEl) arrowEl.textContent = songsEl.classList.contains('hidden') ? '▸' : '▾';
+}
+
+function browseMovieSongs(albumName, lang) {
+  // Find all songs from this album/movie and display them as a collection
+  const source = lang === 'hindi'
+    ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+    : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+  const albumNorm = normalizeForMatch(albumName);
+  const songs = source.filter(s => normalizeForMatch(decodeHtml(s.album || '')) === albumNorm);
+  if (!songs.length) return;
+  // Play as a collection
+  songs.sort((a, b) => parseInt(a.year || 0) - parseInt(b.year || 0));
+  activeCollectionPool = { songs, index: 0 };
+  history.push(songs[0]);
+  historyIndex = history.length - 1;
+  playSong(songs[0]);
+  showPage('player');
 }
 
 function playSongFromSearch(id, lang) {
