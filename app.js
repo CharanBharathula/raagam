@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '40';
+const RELEASE_MARKER = '41';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -293,9 +293,9 @@ async function _resolveVideoIds() {
       if (cached) { entry.videoId = cached; entry.videoResolved = true; continue; }
       if (videoSearchCache[entry.song.id]?.searched) { entry.videoResolved = true; continue; }
 
-      // Batch up to 2 unresolved entries
+      // Batch up to 3 unresolved entries
       const batch = [entry];
-      for (let j = i + 1; j < prefetchQueue.length && batch.length < 2; j++) {
+      for (let j = i + 1; j < prefetchQueue.length && batch.length < 3; j++) {
         const e = prefetchQueue[j];
         if (!e.videoResolved && !_resolvedVideoId(e.song.id) && !videoSearchCache[e.song.id]?.searched) batch.push(e);
       }
@@ -558,6 +558,46 @@ async function _megaQueueResolveNulls() {
       _saveMegaQueue();
       await new Promise(r => setTimeout(r, 200));
     }
+  }
+}
+
+// Batch resolve video IDs for home page songs (Top 50 + collections)
+// Uses InnerTube (free, no quota) for bulk resolution
+async function batchResolveHomeVideoIds() {
+  const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+  const unresolvedSongs = [];
+
+  for (const lang of ['telugu', 'hindi']) {
+    const db = lang === 'hindi'
+      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    if (!db.length) continue;
+    const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
+    // Get top curated songs that don't have cached video IDs
+    const curated = db.filter(s => {
+      if (!s?.id || !s?.audio) return false;
+      if (videoCache[s.id]) return false; // already cached
+      if (s.duration && s.duration < 120) return false;
+      const a = (s.artists || '').toLowerCase();
+      return artists.some(ca => a.includes(ca));
+    });
+    // Shuffle and take first 30 per language
+    _shuffleArray(curated);
+    unresolvedSongs.push(...curated.slice(0, 30));
+  }
+
+  if (!unresolvedSongs.length) return;
+
+  // Resolve in parallel batches of 3 using InnerTube (free)
+  for (let i = 0; i < unresolvedSongs.length; i += 3) {
+    const batch = unresolvedSongs.slice(i, i + 3);
+    await Promise.allSettled(batch.map(async song => {
+      try {
+        const videoId = await fetchYouTubeVideoId(song);
+        if (videoId) _cacheVideoId(song.id, videoId);
+      } catch {}
+    }));
+    await new Promise(r => setTimeout(r, 100));
   }
 }
 
@@ -1704,7 +1744,6 @@ function enterApp() {
 
 function _startMegaQueueBuild() {
   if (megaQueueReady) return;
-  // Show a subtle progress indicator on home page
   const badge = document.getElementById('mega-queue-status');
   megaQueueStartup((loaded, total) => {
     if (badge) {
@@ -1713,9 +1752,13 @@ function _startMegaQueueBuild() {
     }
   }).then(() => {
     if (badge) {
-      badge.textContent = `${megaQueue.telugu.length + megaQueue.hindi.length} songs ready`;
+      const count = megaQueue.telugu.length + megaQueue.hindi.length;
+      const withVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
+      badge.textContent = `${count} songs ready (${withVideo} with video)`;
       setTimeout(() => badge.classList.add('hidden'), 3000);
     }
+    // After MegaQueue is built, batch-resolve video IDs for home page songs in background
+    setTimeout(() => batchResolveHomeVideoIds(), 2000);
   });
 }
 
@@ -2498,7 +2541,7 @@ async function fetchYouTubeVideoId(song) {
     if (videoId && videoId.length > 5) return videoId;
   }
 
-  // 1. Check persistent localStorage cache
+  // 1. Check persistent localStorage cache (INSTANT — no network)
   const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
   if (cache[song?.id]) return cache[song.id];
   if (!song?.id) return null;
@@ -2512,52 +2555,67 @@ async function fetchYouTubeVideoId(song) {
   videoSearchCache[song.id] = { videoId: null, searched: false };
 
   const queries = buildVideoSearchQueries(song);
-  console.log('[Video Search] Starting for:', song.name, '| Queries:', queries.length);
 
-  // Strategy: for each query, fire ALL sources in parallel (API + InnerTube + proxies)
-  // This maximizes chances of finding a result even when some sources are down
-  for (let qi = 0; qi < queries.length; qi++) {
-    const query = queries[qi];
-    const allFetches = [
-      _fetchFromYouTubeAPI(query, 8).catch(() => []),
-      _fetchFromInnerTube(query, 8).catch(() => []),
-      _fetchFromCORSProxy(query).catch(() => []),
-      ...PIPED_INSTANCES.map(i => _fetchFromPiped(i, query).catch(() => [])),
-      ...INVIDIOUS_INSTANCES.map(i => _fetchFromInvidious(i, query).catch(() => []))
-    ];
+  // ──── FAST PATH: YouTube Data API (single query, ~200ms) ────
+  // With API key enabled, this is the fastest and most reliable source
+  if (typeof YOUTUBE_API_KEY !== 'undefined' && YOUTUBE_API_KEY && !youtubeApiQuotaExhausted) {
     try {
-      const results = await Promise.all(allFetches);
-      const allCandidates = results.flat().filter(c => c?.videoId);
-      const sourceCount = results.filter(r => r.length > 0).length;
-      console.log(`[Video Search] Q${qi+1} "${query.slice(0,40)}": ${sourceCount} sources, ${allCandidates.length} candidates`);
-
-      const videoId = pickVideoIdFromCandidates(song, allCandidates, qi === 0 ? 0.32 : 0.22)
-        || fallbackVideoIdFromCandidates(song, allCandidates);
-
+      const apiResult = await _fetchFromYouTubeAPI(queries[0], 5);
+      const videoId = pickVideoIdFromCandidates(song, apiResult, 0.32)
+        || fallbackVideoIdFromCandidates(song, apiResult);
       if (videoId) {
-        console.log('[Video Search] Found video:', videoId);
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
         return videoId;
       }
-    } catch { /* all sources failed, try next query */ }
+    } catch {}
 
-    // Only try first 3-4 queries to avoid excessive API calls
-    if (qi >= 3 && !youtubeApiQuotaExhausted) break;
+    // Try second query with API if first didn't match
+    if (queries.length > 1) {
+      try {
+        const apiResult2 = await _fetchFromYouTubeAPI(queries[1], 5);
+        const videoId = pickVideoIdFromCandidates(song, apiResult2, 0.28)
+          || fallbackVideoIdFromCandidates(song, apiResult2);
+        if (videoId) {
+          videoSearchCache[song.id] = { videoId, searched: true };
+          _cacheVideoId(song.id, videoId);
+          return videoId;
+        }
+      } catch {}
+    }
   }
 
-  // Last resort: try a simplified direct search with just song name
+  // ──── FALLBACK: InnerTube (free, ~500ms, no quota) ────
+  for (let qi = 0; qi < Math.min(queries.length, 3); qi++) {
+    try {
+      const itResult = await _fetchFromInnerTube(queries[qi], 6);
+      const videoId = pickVideoIdFromCandidates(song, itResult, qi === 0 ? 0.30 : 0.22)
+        || fallbackVideoIdFromCandidates(song, itResult);
+      if (videoId) {
+        videoSearchCache[song.id] = { videoId, searched: true };
+        _cacheVideoId(song.id, videoId);
+        return videoId;
+      }
+    } catch {}
+  }
+
+  // ──── LAST RESORT: Piped/Invidious (1 instance each, ~1-3s) ────
   try {
     const simpleName = decodeHtml(song?.name || '').trim();
-    const simpleQuery = `${simpleName} official music video`;
-    const lastChance = await _fetchFromInnerTube(simpleQuery, 5).catch(() => []);
-    const corsChance = await _fetchFromCORSProxy(simpleQuery).catch(() => []);
-    const finalCandidates = [...lastChance, ...corsChance].filter(c => c?.videoId);
-    if (finalCandidates.length) {
-      const videoId = pickVideoIdFromCandidates(song, finalCandidates, 0.20)
-        || fallbackVideoIdFromCandidates(song, finalCandidates);
+    const artist = getSongArtistSeed(song);
+    const fallbackQuery = `${simpleName} ${artist} song video`;
+    const [pipedResult, invResult] = await Promise.allSettled([
+      _fetchFromPiped(PIPED_INSTANCES[0], fallbackQuery).catch(() => []),
+      _fetchFromInvidious(INVIDIOUS_INSTANCES[0], fallbackQuery).catch(() => [])
+    ]);
+    const allCandidates = [
+      ...(pipedResult.status === 'fulfilled' ? pipedResult.value : []),
+      ...(invResult.status === 'fulfilled' ? invResult.value : [])
+    ].filter(c => c?.videoId);
+    if (allCandidates.length) {
+      const videoId = pickVideoIdFromCandidates(song, allCandidates, 0.20)
+        || fallbackVideoIdFromCandidates(song, allCandidates);
       if (videoId) {
-        console.log('[Video Search] Last resort found:', videoId);
         videoSearchCache[song.id] = { videoId, searched: true };
         _cacheVideoId(song.id, videoId);
         return videoId;
@@ -2805,93 +2863,31 @@ function playSong(song) {
   const preloadedUrl = _pullPreloadedAudioUrl(song.id);
   audio.src = preloadedUrl || currentAudioFallbackUrls[currentAudioFallbackIndex];
 
-  // If in video mode, wait for video ID to resolve before starting playback
-  // This ensures audio and video start simultaneously
-  const videoReady = _waitForVideoReady(song);
-  videoReady.then(() => {
-    audio.play().then(() => {
-      isPlaying = true; isLoadingNext = false; showLoading(false);
-      consecutiveErrors = 0;
-      updatePlayBtn();
-      document.querySelector('.album-art-container')?.classList.add('playing');
-      saveRecent(song);
-      fetchLyrics(song);
-      if (window.aiEngine) window.aiEngine.trackPlay(song);
-      if (voiceMode === 'vocal') {
-        applyVocalHideForCurrentSong();
-      }
-      // If in video mode, activate iframe at current audio position
-      if (currentMediaMode === 'video' && currentVideoContent === 'youtube') {
-        const vid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
-        if (vid) _activateYouTubeIframe(vid, audio.currentTime || 0);
-      }
-      setTimeout(() => {
-        preloadNextSong();
-        _consumeFromQueue(song.id);
-        prefetchPipeline();
-      }, 500);
-    }).catch(e => {
-      console.error('Play failed:', e);
-      isLoadingNext = false; showLoading(false);
-    });
-  });
-}
-
-// Wait for video to be ready (or timeout) before allowing playback
-function _waitForVideoReady(song) {
-  // If not in video mode, start immediately — no waiting
-  if (currentMediaMode !== 'video') return Promise.resolve();
-
-  // If video ID is already known (prefetch cache / localStorage), start immediately
-  const knownVid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
-  if (knownVid) {
-    // Pre-warm iframe so it's ready when audio starts
-    _prewarmYouTubeIframe(knownVid);
-    currentVideoContent = 'youtube';
-    return Promise.resolve();
-  }
-
-  // Video ID not yet known — wait for search to complete (max 4s timeout)
-  // Show badge as LOADING while waiting
-  const badge = document.getElementById('video-mode-badge');
-  if (badge) badge.textContent = 'LOADING...';
-
-  return new Promise(resolve => {
-    const timeout = setTimeout(() => {
-      // Timeout: start audio anyway, video will catch up later
-      if (badge && badge.textContent === 'LOADING...') badge.textContent = 'SEARCHING...';
-      resolve();
-    }, 4000);
-
-    // Check if pendingVideoSearch exists
-    if (pendingVideoSearch) {
-      pendingVideoSearch.then(videoId => {
-        clearTimeout(timeout);
-        if (videoId && currentSong?.id === song.id) {
-          _prewarmYouTubeIframe(videoId);
-          currentVideoContent = 'youtube';
-          if (badge) badge.textContent = 'YOUTUBE';
-        }
-        resolve();
-      }).catch(() => { clearTimeout(timeout); resolve(); });
-    } else {
-      // No pending search — start the search and wait briefly
-      const search = ensureVideoSearch(song);
-      if (search) {
-        search.then(videoId => {
-          clearTimeout(timeout);
-          if (videoId && currentSong?.id === song.id) {
-            _prewarmYouTubeIframe(videoId);
-            currentVideoContent = 'youtube';
-            if (badge) badge.textContent = 'YOUTUBE';
-          }
-          resolve();
-        }).catch(() => { clearTimeout(timeout); resolve(); });
-      } else {
-        clearTimeout(timeout);
-        resolve();
-      }
+  // NEVER block audio — start immediately. Video catches up via prewarm + sync.
+  audio.play().then(() => {
+    isPlaying = true; isLoadingNext = false; showLoading(false);
+    consecutiveErrors = 0;
+    updatePlayBtn();
+    document.querySelector('.album-art-container')?.classList.add('playing');
+    saveRecent(song);
+    fetchLyrics(song);
+    if (window.aiEngine) window.aiEngine.trackPlay(song);
+    if (voiceMode === 'vocal') {
+      applyVocalHideForCurrentSong();
     }
+    // If in video mode and iframe is prewarmed, activate at time 0
+    if (currentMediaMode === 'video' && currentVideoContent === 'youtube') {
+      const vid = _resolvedVideoId(song.id) || videoSearchCache[song.id]?.videoId;
+      if (vid) _activateYouTubeIframe(vid, 0);
+    }
+    setTimeout(() => {
+      preloadNextSong();
+      _consumeFromQueue(song.id);
+      prefetchPipeline();
+    }, 500);
+  }).catch(e => {
+    console.error('Play failed:', e);
+    isLoadingNext = false; showLoading(false);
   });
 }
 
