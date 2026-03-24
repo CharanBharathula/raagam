@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '34';
+const RELEASE_MARKER = '35';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -2063,9 +2063,9 @@ function setupSongMedia(song) {
     video.load();
   }
 
-  // Background search (always runs, upgrades CANVAS → YOUTUBE when found)
+  // Only search for video when user clicks Video tab (saves YouTube API quota)
+  // Previously ran for every song, burning 100 units per search (10,000 daily limit = 100 searches)
   const songIdAtSearch = song.id;
-  ensureVideoSearch(song);
   if (pendingVideoSearch) pendingVideoSearch.then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
