@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '35';
+const RELEASE_MARKER = '36';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -96,6 +96,23 @@ let downloadingUrls = new Set(); // Currently downloading URLs
 // Preload next song for smoother playback
 let preloadedNext = null; // { songId, url, el }
 
+// ═══ PREFETCH PIPELINE STATE ═══
+let prefetchQueue      = [];     // { song, videoId, videoResolved, audioPreloaded }[]
+let prefetchResolving  = false;  // guard against concurrent resolvers
+let audioPreloadPool   = [];     // { songId, url, el: Audio }[]
+let prewarmVideoId     = null;   // videoId currently in hidden iframe (for NEXT song)
+let prewarmSongId      = null;   // songId whose video is prewarmed
+
+// ═══ DRIFT-CORRECTED YOUTUBE SYNC ═══
+const YT_SYNC_INTERVAL = 250;
+const YT_DRIFT_SOFT    = 0.4;   // seconds — trigger soft seek
+const YT_DRIFT_HARD    = 2.0;   // seconds — hard seek
+let ytSyncTimer        = null;
+let ytDriftHistory     = [];
+const YT_DRIFT_WINDOW  = 8;
+let _lastYtSeekTime    = 0;
+let _lastYtSeekAt      = 0;
+
 // Lazy DB loading
 let teluguDbLoaded = false, bollywoodDbLoaded = false;
 let teluguDbLoading = null, bollywoodDbLoading = null;
@@ -119,6 +136,201 @@ function loadBollywoodDb() {
   if (bollywoodDbLoading) return bollywoodDbLoading;
   bollywoodDbLoading = loadSongDb('bollywood-songs-db.js').then(() => { bollywoodDbLoaded = true; }).catch(() => { bollywoodDbLoading = null; });
   return bollywoodDbLoading;
+}
+
+// ═══ PREFETCH PIPELINE ═══
+
+function _getLocalVideoId(songId) {
+  try { return JSON.parse(localStorage.getItem('raagam_video_cache') || '{}')[songId] || null; }
+  catch { return null; }
+}
+
+function _resolvedVideoId(songId) {
+  const pf = prefetchQueue.find(e => e.song.id === songId);
+  if (pf?.videoId) return pf.videoId;
+  if (videoSearchCache[songId]?.videoId) return videoSearchCache[songId].videoId;
+  return _getLocalVideoId(songId);
+}
+
+function _getAdaptivePrefetchDepth() {
+  const conn = navigator.connection || navigator.mozConnection;
+  if (conn) {
+    if (conn.saveData) return { songs: 2, audio: 1, resolveVideo: false };
+    switch (conn.effectiveType) {
+      case 'slow-2g':
+      case '2g': return { songs: 3, audio: 1, resolveVideo: false };
+      case '3g': return { songs: 6, audio: 2, resolveVideo: true };
+    }
+  }
+  return { songs: IS_MOBILE ? 8 : 15, audio: IS_MOBILE ? 2 : 4, resolveVideo: true };
+}
+
+function _pureSmartPick(db, excludeIds, tempRecent, tempAlbums) {
+  if (!Array.isArray(db) || !db.length) return null;
+  let pool = db.filter(s => {
+    if (!s?.id) return false;
+    if (excludeIds.has(s.id)) return false;
+    if (tempRecent.has(s.id)) return false;
+    if (s.duration && s.duration < MIN_SONG_DURATION) return false;
+    if (tempAlbums.length > 0 && tempAlbums.includes(s.album)) return false;
+    return true;
+  });
+  if (pool.length < 10) {
+    pool = db.filter(s => s?.id && !excludeIds.has(s.id) && (!s.duration || s.duration >= MIN_SONG_DURATION));
+  }
+  if (!pool.length) return null;
+  if (eraLock) {
+    const eraPool = pool.filter(s => _getDecadeKey(s.year) === eraLock);
+    if (eraPool.length > 0) pool = eraPool;
+  }
+  const decades = {};
+  for (const s of pool) { const dk = _getDecadeKey(s.year); if (!decades[dk]) decades[dk] = []; decades[dk].push(s); }
+  const available = Object.keys(decades);
+  if (!available.length) return null;
+  let totalWeight = 0;
+  const weighted = [];
+  for (const dk of available) { const w = DECADE_WEIGHTS[dk] || 2; totalWeight += w; weighted.push({ decade: dk, weight: w }); }
+  let roll = Math.random() * totalWeight;
+  let selectedDecade = weighted[0].decade;
+  for (const entry of weighted) { roll -= entry.weight; if (roll <= 0) { selectedDecade = entry.decade; break; } }
+  const decadePool = decades[selectedDecade];
+  return decadePool[Math.floor(Math.random() * decadePool.length)] || null;
+}
+
+function _pickUpcomingSongs(count) {
+  const songs = [];
+  const seen = new Set();
+  if (currentSong) seen.add(currentSong.id);
+
+  // Source 1: forward history
+  for (let i = historyIndex + 1; i < history.length && songs.length < count; i++) {
+    if (history[i]?.id && !seen.has(history[i].id)) { songs.push(history[i]); seen.add(history[i].id); }
+  }
+
+  // Source 2: collection/category pool
+  const pool = activeCollectionPool || (bollywoodCategoryPool && activeLanguage === 'hindi' ? bollywoodCategoryPool : null);
+  if (pool?.length > 1) {
+    const idx = pool.findIndex(s => s.id === currentSong?.id);
+    for (let i = (idx >= 0 ? idx + 1 : 0); i < pool.length && songs.length < count; i++) {
+      if (pool[i]?.id && !seen.has(pool[i].id)) { songs.push(pool[i]); seen.add(pool[i].id); }
+    }
+  }
+
+  // Source 3: random shuffle (pure — no global state mutation)
+  if (songs.length < count && !activeCollectionPool && !bollywoodCategoryPool) {
+    const db = getActiveDB();
+    if (db.length > 0) {
+      const tempRecent = new Set(recentlyPlayedIds);
+      const tempAlbums = [...recentAlbums];
+      while (songs.length < count) {
+        const pick = _pureSmartPick(db, seen, tempRecent, tempAlbums);
+        if (!pick) break;
+        songs.push(pick);
+        seen.add(pick.id);
+        tempRecent.add(pick.id);
+        if (tempRecent.size > RECENTLY_PLAYED_WINDOW) tempRecent.delete(tempRecent.values().next().value);
+        if (pick.album) { tempAlbums.push(pick.album); if (tempAlbums.length > RECENT_ALBUM_WINDOW) tempAlbums.shift(); }
+      }
+    }
+  }
+  return songs;
+}
+
+function prefetchPipeline() {
+  const adaptive = _getAdaptivePrefetchDepth();
+  const upcoming = _pickUpcomingSongs(adaptive.songs);
+
+  const existingById = new Map(prefetchQueue.map(e => [e.song.id, e]));
+  prefetchQueue = upcoming.map(song => {
+    const existing = existingById.get(song.id);
+    if (existing) return existing;
+    const vid = _resolvedVideoId(song.id);
+    return { song, videoId: vid, videoResolved: !!vid || !!(videoSearchCache[song.id]?.searched), audioPreloaded: false };
+  });
+
+  if (adaptive.resolveVideo) _resolveVideoIds();
+  _preloadQueueAudio(adaptive.audio);
+  _prewarmNextVideo();
+}
+
+async function _resolveVideoIds() {
+  if (prefetchResolving) return;
+  prefetchResolving = true;
+  try {
+    for (let i = 0; i < prefetchQueue.length; i++) {
+      const entry = prefetchQueue[i];
+      if (entry.videoResolved) continue;
+      const cached = _resolvedVideoId(entry.song.id);
+      if (cached) { entry.videoId = cached; entry.videoResolved = true; continue; }
+      if (videoSearchCache[entry.song.id]?.searched) { entry.videoResolved = true; continue; }
+
+      // Batch up to 2 unresolved entries
+      const batch = [entry];
+      for (let j = i + 1; j < prefetchQueue.length && batch.length < 2; j++) {
+        const e = prefetchQueue[j];
+        if (!e.videoResolved && !_resolvedVideoId(e.song.id) && !videoSearchCache[e.song.id]?.searched) batch.push(e);
+      }
+
+      await Promise.allSettled(batch.map(async e => {
+        try { e.videoId = (await fetchYouTubeVideoId(e.song)) || null; } catch {}
+        e.videoResolved = true;
+      }));
+
+      // After each batch, prefetch thumbnail and try prewarming
+      for (const e of batch) {
+        if (e.videoId) { const img = new Image(); img.src = `https://i.ytimg.com/vi/${e.videoId}/hqdefault.jpg`; }
+      }
+      _prewarmNextVideo();
+      await new Promise(r => setTimeout(r, 80)); // yield to UI
+    }
+  } finally { prefetchResolving = false; }
+}
+
+function _preloadQueueAudio(limit) {
+  const maxAudio = limit || (IS_MOBILE ? 2 : 4);
+  const queueIds = new Set(prefetchQueue.map(e => e.song.id));
+  audioPreloadPool = audioPreloadPool.filter(p => {
+    if (queueIds.has(p.songId)) return true;
+    p.el.removeAttribute('src'); p.el.load();
+    return false;
+  });
+  const loadedIds = new Set(audioPreloadPool.map(p => p.songId));
+  for (const entry of prefetchQueue) {
+    if (audioPreloadPool.length >= maxAudio) break;
+    if (loadedIds.has(entry.song.id) || !entry.song.audio) continue;
+    const urls = getAudioFallbackUrls(entry.song.audio);
+    if (!urls.length) continue;
+    const el = new Audio();
+    el.preload = 'auto';
+    el.src = urls[0];
+    audioPreloadPool.push({ songId: entry.song.id, url: urls[0], el });
+    entry.audioPreloaded = true;
+  }
+}
+
+function _prewarmNextVideo() {
+  if (!prefetchQueue.length) return;
+  const next = prefetchQueue[0];
+  if (!next?.videoId) return;
+  if (currentMediaMode === 'video' && currentVideoContent === 'youtube') return;
+  if (prewarmSongId === next.song.id && prewarmVideoId === next.videoId) return;
+  prewarmVideoId = next.videoId;
+  prewarmSongId = next.song.id;
+  _prewarmYouTubeIframe(next.videoId);
+}
+
+function _consumeFromQueue(songId) {
+  prefetchQueue = prefetchQueue.filter(e => e.song.id !== songId);
+  if (prewarmSongId === songId) { prewarmSongId = null; prewarmVideoId = null; }
+}
+
+function _pullPreloadedAudioUrl(songId) {
+  const idx = audioPreloadPool.findIndex(p => p.songId === songId);
+  if (idx < 0) return null;
+  const entry = audioPreloadPool.splice(idx, 1)[0];
+  const url = entry.url;
+  entry.el.removeAttribute('src'); entry.el.load();
+  return url;
 }
 
 // API search
@@ -463,12 +675,38 @@ function syncYouTubeTime(force = false) {
   if (currentVideoContent !== 'youtube') return;
   const ytFrame = document.getElementById('yt-iframe');
   if (!ytFrame || ytFrame.classList.contains('hidden')) return;
+  if (audio.paused || !audio.duration) return;
 
-  const now = Date.now();
-  if (force || now - lastYouTubeSyncAt > 1600) {
-    _ytPostMessage('seekTo', [Math.floor(audio.currentTime || 0), true]);
-    lastYouTubeSyncAt = now;
+  // Estimate YouTube's current position from our last seek command
+  const ytEstimate = _lastYtSeekAt ? (_lastYtSeekTime + (Date.now() - _lastYtSeekAt) / 1000) : audio.currentTime;
+  const drift = audio.currentTime - ytEstimate;
+
+  // Median filter: smooth out jitter from network latency
+  ytDriftHistory.push(drift);
+  if (ytDriftHistory.length > YT_DRIFT_WINDOW) ytDriftHistory.shift();
+  const sorted = [...ytDriftHistory].sort((a, b) => a - b);
+  const medianDrift = sorted[Math.floor(sorted.length / 2)];
+
+  if (force || Math.abs(medianDrift) > YT_DRIFT_SOFT) {
+    const seekTo = Math.floor(audio.currentTime || 0);
+    _ytPostMessage('seekTo', [seekTo, true]);
+    _lastYtSeekTime = seekTo;
+    _lastYtSeekAt = Date.now();
+    lastYouTubeSyncAt = Date.now();
+    if (force) ytDriftHistory = [];
   }
+}
+
+function startYtSyncLoop() {
+  stopYtSyncLoop();
+  ytDriftHistory = [];
+  _lastYtSeekTime = audio.currentTime || 0;
+  _lastYtSeekAt = Date.now();
+  ytSyncTimer = setInterval(syncYouTubeTime, YT_SYNC_INTERVAL);
+}
+
+function stopYtSyncLoop() {
+  if (ytSyncTimer) { clearInterval(ytSyncTimer); ytSyncTimer = null; }
 }
 
 function buildYouTubeEmbedUrl(videoId, startSeconds = 0) {
@@ -1417,17 +1655,22 @@ function playRandomSong() {
   activeLanguage = 'telugu';
   eraLock = null; // Clear era lock when explicitly playing random
   updateEraLockBadge();
-  const excludeId = currentSong ? currentSong.id : null;
-  const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
-  let song = smartPickRandom(teluguDb, excludeId);
-  if (!song) {
-    song = pickRandomSongFromList(teluguDb, excludeId);
+  // Pull from prefetch queue if available
+  let song = null;
+  if (prefetchQueue.length > 0) {
+    song = prefetchQueue[0].song;
   }
   if (!song) {
-    const fallback = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId)
-      || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId);
-    if (!fallback) { showToast('Songs database not loaded yet'); return; }
-    song = fallback;
+    const excludeId = currentSong ? currentSong.id : null;
+    const teluguDb = (typeof SongsDB !== 'undefined' && Array.isArray(SongsDB.SONGS_DB)) ? SongsDB.SONGS_DB : [];
+    song = smartPickRandom(teluguDb, excludeId);
+    if (!song) song = pickRandomSongFromList(teluguDb, excludeId);
+    if (!song) {
+      const fallback = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId)
+        || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() !== 'hindi'), excludeId);
+      if (!fallback) { showToast('Songs database not loaded yet'); return; }
+      song = fallback;
+    }
   }
   if (currentSong && historyIndex >= 0 && historyIndex < history.length - 1) {
     history = history.slice(0, historyIndex + 1);
@@ -1570,6 +1813,7 @@ function syncSongVideoTime() {
 }
 
 function switchToAudioMode() {
+  stopYtSyncLoop();
   currentMediaMode = 'audio';
   const audioBtn = document.getElementById('media-audio-btn');
   const videoBtn = document.getElementById('media-video-btn');
@@ -1600,6 +1844,12 @@ function switchToAudioMode() {
 
 function switchToVideoMode() {
   if (!currentSong) return;
+  // Check prefetch cache first — instant video if already resolved
+  const prefVid = _resolvedVideoId(currentSong.id);
+  if (prefVid && !videoSearchCache[currentSong.id]?.videoId) {
+    videoSearchCache[currentSong.id] = { videoId: prefVid, searched: true };
+    currentVideoContent = 'youtube';
+  }
   // Retry if previous search failed
   const cachedState = videoSearchCache[currentSong?.id];
   if (cachedState?.searched && !cachedState.videoId) {
@@ -1752,7 +2002,10 @@ function _activateYouTubeIframe(videoId, startSeconds) {
   if (!audio.paused) {
     _ytPostMessage('playVideo', []);
   }
+  // Set thumbnail as background for instant visual while iframe loads
+  if (videoId) ytFrame.style.backgroundImage = `url(https://i.ytimg.com/vi/${videoId}/hqdefault.jpg)`;
   syncYouTubeTime(true);
+  startYtSyncLoop();
 }
 
 async function _fetchFromInnerTube(query, limit = 8) {
@@ -2005,10 +2258,19 @@ function setupSongMedia(song) {
   if (!currentVideoUrl && cachedVideoId) {
     currentVideoContent = 'youtube';
   }
-  // Clear pre-warm state for new song before switchToAudioMode runs
-  ytPrewarmed = false;
-  const ytFrameReset = document.getElementById('yt-iframe');
-  if (ytFrameReset) { ytFrameReset.src = 'about:blank'; ytFrameReset.classList.add('hidden'); }
+  // Prefetch-aware iframe management: preserve prewarmed iframe if it matches this song
+  const prefetchedVid = _resolvedVideoId(song.id);
+  if (prewarmSongId === song.id && prewarmVideoId && ytPrewarmed) {
+    // FAST PATH — iframe already loaded with this song's video from prefetch
+    currentVideoContent = 'youtube';
+  } else {
+    ytPrewarmed = false;
+    if (ytFrame) { ytFrame.src = 'about:blank'; ytFrame.classList.add('hidden'); }
+    if (!currentVideoUrl && (prefetchedVid || cachedVideoId)) {
+      currentVideoContent = 'youtube';
+      _prewarmYouTubeIframe(prefetchedVid || cachedVideoId);
+    }
+  }
   switchToAudioMode();
 
   // Always show media switch — canvas visualizer is the fallback
@@ -2063,10 +2325,9 @@ function setupSongMedia(song) {
     video.load();
   }
 
-  // Only search for video when user clicks Video tab (saves YouTube API quota)
-  // Previously ran for every song, burning 100 units per search (10,000 daily limit = 100 searches)
+  // Handle pending video search (skip if prefetch already resolved)
   const songIdAtSearch = song.id;
-  if (pendingVideoSearch) pendingVideoSearch.then(videoId => {
+  if (pendingVideoSearch && !prefetchedVid) pendingVideoSearch.then(videoId => {
     if (!currentSong || currentSong.id !== songIdAtSearch) return;
     if (currentVideoContent === 'video') return; // Local video file priority
 
@@ -2200,7 +2461,8 @@ function playSong(song) {
     return;
   }
 
-  audio.src = currentAudioFallbackUrls[currentAudioFallbackIndex];
+  const preloadedUrl = _pullPreloadedAudioUrl(song.id);
+  audio.src = preloadedUrl || currentAudioFallbackUrls[currentAudioFallbackIndex];
   audio.play().then(() => {
     isPlaying = true; isLoadingNext = false; showLoading(false);
     consecutiveErrors = 0;
@@ -2212,7 +2474,11 @@ function playSong(song) {
     if (voiceMode === 'vocal') {
       applyVocalHideForCurrentSong();
     }
-    setTimeout(preloadNextSong, 2000);
+    setTimeout(() => {
+      preloadNextSong();
+      _consumeFromQueue(song.id);
+      prefetchPipeline();
+    }, 500);
   }).catch(e => {
     console.error('Play failed:', e);
     // Don't retry here — let the audio 'error' event handler deal with retries
@@ -2239,10 +2505,6 @@ function playNext() {
   if (activeCollectionPool && activeCollectionPool.length > 1) {
     const idx = activeCollectionPool.findIndex(s => s.id === currentSong?.id);
     const next = (idx >= 0 && idx < activeCollectionPool.length - 1) ? activeCollectionPool[idx + 1] : activeCollectionPool[0];
-    const lookaheadIdx = activeCollectionPool.indexOf(next) + 1;
-    if (lookaheadIdx < activeCollectionPool.length) {
-      fetchYouTubeVideoId(activeCollectionPool[lookaheadIdx]).catch(() => {});
-    }
     history.push(next);
     historyIndex = history.length - 1;
     playSong(next);
@@ -2252,17 +2514,18 @@ function playNext() {
   if (bollywoodCategoryPool && activeLanguage === 'hindi') {
     const idx = bollywoodCategoryPool.findIndex(s => s.id === currentSong?.id);
     const next = (idx >= 0 && idx < bollywoodCategoryPool.length - 1) ? bollywoodCategoryPool[idx + 1] : bollywoodCategoryPool[0];
-    // Look-ahead: pre-fetch video ID for the song after next in pool
-    const lookaheadIdx = bollywoodCategoryPool.indexOf(next) + 1;
-    if (lookaheadIdx < bollywoodCategoryPool.length) {
-      fetchYouTubeVideoId(bollywoodCategoryPool[lookaheadIdx]).catch(() => {});
-    }
     history.push(next); historyIndex = history.length - 1;
     playSong(next); return;
   }
-  // Smart shuffle: use smartPickRandom with era lock support
-  const db = getActiveDB();
-  const song = smartPickRandom(db, currentSong?.id);
+  // Smart shuffle: pull from prefetch queue first, fallback to smartPickRandom
+  let song = null;
+  if (prefetchQueue.length > 0 && !activeCollectionPool && !(bollywoodCategoryPool && activeLanguage === 'hindi')) {
+    song = prefetchQueue[0].song;
+  }
+  if (!song) {
+    const db = getActiveDB();
+    song = smartPickRandom(db, currentSong?.id);
+  }
   if (song) {
     history.push(song); historyIndex = history.length - 1;
     playSong(song);
@@ -2470,9 +2733,7 @@ audio.addEventListener('timeupdate', () => {
   const mediaTick = IS_MOBILE ? 250 : 120;
   if (now - latestMediaSyncAt >= mediaTick) {
     syncSongVideoTime();
-    if (currentVideoContent === 'youtube' && !audio.paused) {
-      syncYouTubeTime(false);
-    }
+    // YouTube sync now handled by dedicated 250ms interval (startYtSyncLoop)
     latestMediaSyncAt = now;
   }
 });
@@ -3587,15 +3848,20 @@ function playRandomBollywood() {
   activeCollectionPool = null;
   eraLock = null;
   updateEraLockBadge();
-  const excludeId = currentSong ? currentSong.id : null;
-  const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
-  let song = smartPickRandom(hindiDb, excludeId);
-  if (!song) {
-    song = pickRandomSongFromList(hindiDb, excludeId);
+  // Pull from prefetch queue if available
+  let song = null;
+  if (prefetchQueue.length > 0 && activeLanguage === 'hindi') {
+    song = prefetchQueue[0].song;
   }
   if (!song) {
-    song = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId)
-      || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId);
+    const excludeId = currentSong ? currentSong.id : null;
+    const hindiDb = (typeof BollywoodSongsDB !== 'undefined' && Array.isArray(BollywoodSongsDB.SONGS_DB)) ? BollywoodSongsDB.SONGS_DB : [];
+    song = smartPickRandom(hindiDb, excludeId);
+    if (!song) song = pickRandomSongFromList(hindiDb, excludeId);
+    if (!song) {
+      song = pickRandomSongFromList(getAllSongs().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId)
+        || pickRandomSongFromList(getRecentSongsSafe().filter(s => (s?.language || '').toLowerCase() === 'hindi'), excludeId);
+    }
   }
   if (song) {
     history.push(song);

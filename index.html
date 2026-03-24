@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Raagam — Telugu Music Player</title>
+  <link rel="preconnect" href="https://www.youtube-nocookie.com" crossorigin>
+  <link rel="preconnect" href="https://i.ytimg.com" crossorigin>
+  <link rel="dns-prefetch" href="https://www.youtube-nocookie.com">
   <link rel="stylesheet" href="style.css?v=1774028800" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='%236c5ce7'/><stop offset='100%' stop-color='%23a29bfe'/></linearGradient></defs><circle cx='50' cy='50' r='48' fill='url(%23g)'/><path d='M42 30v32a12 12 0 1 1-4-9V36l24-6v28a12 12 0 1 1-4-9V30L42 30z' fill='white' opacity='.95'/></svg>" />
   <link rel="manifest" href="manifest.json" />
@@ -426,9 +429,9 @@
   <script src="config.js"></script>
   <!-- songs-db.js and bollywood-songs-db.js loaded lazily by app.js for faster startup -->
   <script src="ai-engine.js"></script>
-  <script src="app.js?v=35"></script>
+  <script src="app.js?v=36"></script>
 <script>
-const RELEASE_STATIC = '35';
+const RELEASE_STATIC = '36';
 (async () => {
   try {
     const markerEl = document.getElementById('release-marker');
