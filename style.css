@@ -242,6 +242,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
 .top-action-group { display: inline-flex; align-items: center; gap: 6px; }
 .voice-mode-btn { position: relative; }
 .voice-mode-btn.active { color: var(--accent); opacity: 1; }
+.voice-mode-btn.engine-alt { color: #00b894; }
+.voice-mode-btn.engine-center { color: #fdcb6e; }
 .voice-mode-btn::after {
   content: attr(title);
   position: absolute;
@@ -320,8 +322,9 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
   border: 0; background: #000; border-radius: 16px;
   z-index: 2; /* above visualizer, below badge */
   pointer-events: none;
-  transform: scale(1.22);
+  transform: scale(1.28);
   transform-origin: center;
+  clip-path: inset(2% 1% 8% 1%);
 }
 .yt-iframe.hidden { display: none !important; }
 .video-mode-badge {
@@ -726,6 +729,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); user
   background: rgba(108,92,231,0.2); color: #a29bfe; font-size: 10px;
   margin-left: 6px; vertical-align: middle;
 }
+.search-lang.api { background: rgba(0,184,148,0.2); color: #00b894; }
 
 .search-empty-state { text-align: center; padding: 60px 20px; color: rgba(255,255,255,0.5); }
 .search-empty-icon { font-size: 48px; margin-bottom: 12px; }

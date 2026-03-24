@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '33';
+const RELEASE_MARKER = '34';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -95,6 +95,75 @@ let downloadingUrls = new Set(); // Currently downloading URLs
 
 // Preload next song for smoother playback
 let preloadedNext = null; // { songId, url, el }
+
+// Lazy DB loading
+let teluguDbLoaded = false, bollywoodDbLoaded = false;
+let teluguDbLoading = null, bollywoodDbLoading = null;
+
+function loadSongDb(src) {
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = src; s.async = true;
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+function loadTeluguDb() {
+  if (teluguDbLoaded || (typeof SongsDB !== 'undefined')) { teluguDbLoaded = true; return Promise.resolve(); }
+  if (teluguDbLoading) return teluguDbLoading;
+  teluguDbLoading = loadSongDb('songs-db.js').then(() => { teluguDbLoaded = true; }).catch(() => { teluguDbLoading = null; });
+  return teluguDbLoading;
+}
+function loadBollywoodDb() {
+  if (bollywoodDbLoaded || (typeof BollywoodSongsDB !== 'undefined')) { bollywoodDbLoaded = true; return Promise.resolve(); }
+  if (bollywoodDbLoading) return bollywoodDbLoading;
+  bollywoodDbLoading = loadSongDb('bollywood-songs-db.js').then(() => { bollywoodDbLoaded = true; }).catch(() => { bollywoodDbLoading = null; });
+  return bollywoodDbLoading;
+}
+
+// API search
+let apiSearchAbortController = null;
+let apiSearchResultsMap = new Map();
+
+async function searchJioSaavnAPI(query) {
+  if (apiSearchAbortController) apiSearchAbortController.abort();
+  apiSearchAbortController = new AbortController();
+  const timer = setTimeout(() => apiSearchAbortController.abort(), 4000);
+  try {
+    const res = await fetch(`https://jiosaavn-api-privatecvc2.vercel.app/search/songs?query=${encodeURIComponent(query)}&limit=20`, { signal: apiSearchAbortController.signal });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    return (payload?.data?.results || []).map(normalizeApiSongResult).filter(Boolean);
+  } catch (e) { return []; }
+  finally { clearTimeout(timer); }
+}
+
+function normalizeApiSongResult(raw) {
+  if (!raw) return null;
+  const id = String(raw.id || '').trim();
+  const name = decodeHtml(String(raw.name || raw.title || '')).trim();
+  const audioUrl = pickBestDownloadUrl(raw.downloadUrl || raw.download_url || []);
+  if (!id || !name || !audioUrl) return null;
+  return {
+    id, name,
+    artists: decodeHtml(String(raw.primaryArtists || raw.artists || '')).trim(),
+    album: decodeHtml(String(typeof raw.album === 'object' ? raw.album?.name : raw.album || '')).trim(),
+    image: pickBestDownloadUrl(raw.image || []),
+    year: String(raw.year || '').trim(),
+    duration: Number(raw.duration || 0) || 0,
+    audio: String(audioUrl).trim().replace(/^http:\/\//i, 'https://'),
+    language: String(raw.language || '').toLowerCase() === 'hindi' ? 'hindi' : 'telugu',
+    _fromApi: true
+  };
+}
+
+function mergeSearchResults(apiResults, localResults) {
+  const seen = new Set();
+  const merged = [];
+  for (const s of apiResults) { if (s?.id && !seen.has(s.id)) { seen.add(s.id); merged.push(s); } }
+  for (const s of localResults) { if (s?.id && !seen.has(s.id)) { seen.add(s.id); merged.push(s); } }
+  return merged.slice(0, 80);
+}
 
 // Song preview (Spotify-like hover) state
 const previewAudio = new Audio();
@@ -315,7 +384,7 @@ function fallbackVideoIdFromCandidates(song, candidates) {
     }
   }
 
-  if (best && best.score >= 0.15) return best.videoId;
+  if (best && best.score >= 0.08) return best.videoId;
 
   const nameNorm = normalizeForMatch(compactSearchPhrase(song?.name || '') || song?.name || '');
   const artistNorm = normalizeForMatch(compactSearchPhrase(getSongArtistSeed(song)) || getSongArtistSeed(song));
@@ -373,8 +442,6 @@ function ensureVideoSearch(song) {
       if (videoId) {
         currentVideoContent = 'youtube';
         updateVideoAvailability(true);
-      } else {
-        updateVideoAvailability(false);
       }
       return videoId;
     })
@@ -445,18 +512,20 @@ function scoreVocalAltCandidate(song, candidate) {
   const candTokens = tokenizeForMatch(text);
 
   let score = 0;
-  if (/karaoke|instrumental|minus one|backing track|bgm|music track/.test(text)) score += 0.65;
-  if (/remix|cover|sped|slowed|nightcore|dj/.test(text)) score -= 0.35;
+  if (/karaoke|instrumental|minus one|backing track|bgm|music track|music only|without vocal|no vocal/.test(text)) score += 0.65;
+  if (/remix|cover|sped|slowed|nightcore|dj|mashup|medley/.test(text)) score -= 0.35;
   score += overlapScore(songTokens, candTokens) * 0.5;
   score += overlapScore(artistTokens, candTokens) * 0.2;
 
+  // Enhanced duration matching
   const baseDuration = Number(song?.duration || 0) || 0;
   const altDuration = Number(candidate?.duration || 0) || 0;
   if (baseDuration > 30 && altDuration > 30) {
     const diff = Math.abs(baseDuration - altDuration) / baseDuration;
-    if (diff <= 0.04) score += 0.25;
-    else if (diff <= 0.08) score += 0.12;
-    else if (diff > 0.25) score -= 0.2;
+    if (diff <= 0.02) score += 0.30;
+    else if (diff <= 0.05) score += 0.22;
+    else if (diff <= 0.10) score += 0.12;
+    else if (diff > 0.30) score -= 0.25;
   }
 
   return score;
@@ -500,7 +569,10 @@ async function findVocalHideAlternative(song) {
   const queries = [
     `${title} ${artist} karaoke`,
     `${title} ${artist} instrumental`,
-    `${title} minus one`
+    `${title} minus one`,
+    `${title} backing track`,
+    `${title} music only`,
+    `${title} without vocals`
   ];
 
   let best = null;
@@ -512,15 +584,17 @@ async function findVocalHideAlternative(song) {
       const score = scoreVocalAltCandidate(song, candidate);
       if (!best || score > best.score) best = { score, song: candidate };
     }
+    // Early exit if high-confidence match found
+    if (best && best.score >= 0.85) break;
   }
 
-  if (best && best.score >= 0.45) {
+  if (best && best.score >= 0.40) {
     vocalAltCache[song.id] = { status: 'hit', song: best.song, cachedAt: Date.now() };
     saveVocalAltCache();
     return best.song;
   }
 
-  vocalAltCache[song.id] = { status: 'miss', retryAfter: Date.now() + 1 * 60 * 60 * 1000 };
+  vocalAltCache[song.id] = { status: 'miss', retryAfter: Date.now() + 30 * 60 * 1000 };
   saveVocalAltCache();
   return null;
 }
@@ -573,34 +647,47 @@ function ensureAudioGraph() {
     audioNormalGain.gain.value = 1;
     audioCenterGain.gain.value = 0;
 
-    // Normal signal path.
+    // Normal signal path
     audioMediaSource.connect(audioNormalGain);
     audioNormalGain.connect(audioContext.destination);
 
-    // Lightweight center-channel cancellation fallback for broad song coverage.
+    // Frequency-band-isolated center-channel cancellation
+    // Only cancels center content in vocal range (200Hz-5kHz)
+    // Preserves bass (<200Hz) and treble (>5kHz) stereo imaging
     const splitter = audioContext.createChannelSplitter(2);
     const merger = audioContext.createChannelMerger(2);
-
-    const lToL = audioContext.createGain();
-    const rToL = audioContext.createGain();
-    const lToR = audioContext.createGain();
-    const rToR = audioContext.createGain();
-
-    lToL.gain.value = 1;
-    rToL.gain.value = -1;
-    lToR.gain.value = -1;
-    rToR.gain.value = 1;
-
     audioMediaSource.connect(splitter);
-    splitter.connect(lToL, 0);
-    splitter.connect(rToL, 1);
-    splitter.connect(lToR, 0);
-    splitter.connect(rToR, 1);
 
-    lToL.connect(merger, 0, 0);
-    rToL.connect(merger, 0, 0);
-    lToR.connect(merger, 0, 1);
-    rToR.connect(merger, 0, 1);
+    // Low-pass: below 200Hz — pass through unmodified (preserves bass/kick)
+    const lpL = audioContext.createBiquadFilter();
+    lpL.type = 'lowpass'; lpL.frequency.value = 200;
+    const lpR = audioContext.createBiquadFilter();
+    lpR.type = 'lowpass'; lpR.frequency.value = 200;
+    splitter.connect(lpL, 0); lpL.connect(merger, 0, 0);
+    splitter.connect(lpR, 1); lpR.connect(merger, 0, 1);
+
+    // Band-pass: 200Hz-5kHz — apply center cancellation (removes vocals)
+    const bpL = audioContext.createBiquadFilter();
+    bpL.type = 'bandpass'; bpL.frequency.value = 1000; bpL.Q.value = 0.5;
+    const bpR = audioContext.createBiquadFilter();
+    bpR.type = 'bandpass'; bpR.frequency.value = 1000; bpR.Q.value = 0.5;
+    const cancelLtoL = audioContext.createGain(); cancelLtoL.gain.value = 1;
+    const cancelRtoL = audioContext.createGain(); cancelRtoL.gain.value = -1;
+    const cancelLtoR = audioContext.createGain(); cancelLtoR.gain.value = -1;
+    const cancelRtoR = audioContext.createGain(); cancelRtoR.gain.value = 1;
+    splitter.connect(bpL, 0); splitter.connect(bpR, 1);
+    bpL.connect(cancelLtoL); bpR.connect(cancelRtoL);
+    bpL.connect(cancelLtoR); bpR.connect(cancelRtoR);
+    cancelLtoL.connect(merger, 0, 0); cancelRtoL.connect(merger, 0, 0);
+    cancelLtoR.connect(merger, 0, 1); cancelRtoR.connect(merger, 0, 1);
+
+    // High-pass: above 5kHz — pass through unmodified (preserves cymbals/air)
+    const hpL = audioContext.createBiquadFilter();
+    hpL.type = 'highpass'; hpL.frequency.value = 5000;
+    const hpR = audioContext.createBiquadFilter();
+    hpR.type = 'highpass'; hpR.frequency.value = 5000;
+    splitter.connect(hpL, 0); hpL.connect(merger, 0, 0);
+    splitter.connect(hpR, 1); hpR.connect(merger, 0, 1);
 
     merger.connect(audioCenterGain);
     audioCenterGain.connect(audioContext.destination);
@@ -757,9 +844,12 @@ function updateVoiceModeButton() {
   const btn = document.getElementById('voice-mode-btn');
   if (!btn) return;
   btn.classList.toggle('active', voiceMode !== 'normal');
-  const modeLabel = voiceMode === 'vocal' && activeVocalEngine === 'center'
-    ? 'Vocal Hide (On-device)'
-    : (VOICE_MODE_LABELS[voiceMode] || 'Normal');
+  btn.classList.toggle('engine-center', activeVocalEngine === 'center');
+  btn.classList.toggle('engine-alt', activeVocalEngine === 'alt');
+  const modeLabel = voiceMode !== 'vocal' ? 'Normal'
+    : activeVocalEngine === 'alt' ? 'Vocal Hide (Karaoke Track)'
+    : activeVocalEngine === 'center' ? 'Vocal Hide (On-device)'
+    : 'Vocal Hide (Searching...)';
   const label = `Voice mode: ${modeLabel}`;
   btn.title = label;
   btn.setAttribute('aria-label', label);
@@ -1085,13 +1175,21 @@ function enterApp() {
   loadVocalAltCache();
   loadVoiceMode();
   renderDynamicHomeContent(false);
-  if (!IS_MOBILE) warmSearchIndex();
   showPage('home');
   updateHomeStats();
   renderRecent();
   restoreLastPlayed();
   updateCacheSize();
   initSongPreviews();
+
+  // Lazy-load song databases in background for offline search/shuffle
+  const idleCb = window.requestIdleCallback || (fn => setTimeout(fn, 100));
+  idleCb(() => {
+    loadTeluguDb().then(() => { updateHomeStats(); if (!IS_MOBILE) warmSearchIndex(); });
+  }, { timeout: 2000 });
+  idleCb(() => {
+    loadBollywoodDb().then(() => { updateHomeStats(); });
+  }, { timeout: 4000 });
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -1498,6 +1596,11 @@ function switchToAudioMode() {
 
 function switchToVideoMode() {
   if (!currentSong) return;
+  // Retry if previous search failed
+  const cachedState = videoSearchCache[currentSong?.id];
+  if (cachedState?.searched && !cachedState.videoId) {
+    delete videoSearchCache[currentSong.id];
+  }
   ensureVideoSearch(currentSong);
 
   currentMediaMode = 'video';
@@ -1562,7 +1665,6 @@ function switchToVideoMode() {
         if (currentMediaMode !== 'video') return;
         if (badge && badge.textContent === 'SEARCHING...') {
           badge.textContent = 'CANVAS';
-          updateVideoAvailability(false);
         }
       }, 12000);
       waitSearch.then(videoId => {
@@ -1913,8 +2015,8 @@ function setupSongMedia(song) {
   if (ytFrameReset) { ytFrameReset.src = 'about:blank'; ytFrameReset.classList.add('hidden'); }
   switchToAudioMode();
 
-  // Only show media switch when a real video source exists.
-  updateVideoAvailability(shouldShowVideoSwitch(song, currentVideoUrl, cachedVideoId));
+  // Always show media switch — canvas visualizer is the fallback
+  updateVideoAvailability(true);
 
   // Update the canvas visualizer with this song's album art
   const imgUrl = song?.image || '';
@@ -3401,7 +3503,7 @@ function renderSearchResults(results, query) {
       <img class="search-thumb" src="${escAttr(s.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
       <div class="search-info">
         <h4>${escHtml(decodeHtml(s.name))} ${isDl ? '<span class="dl-badge">↓</span>' : ''}</h4>
-        <p>${escHtml(decodeHtml(s.artists||''))} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}</p>
+        <p>${escHtml(decodeHtml(s.artists||''))} ${s.language==='hindi'?'<span class=search-lang>Hindi</span>':'<span class=search-lang>Telugu</span>'}${s._fromApi?'<span class="search-lang api">Live</span>':''}</p>
       </div>
       <button class="search-dl-btn" data-download-id="${escAttr(s.id)}" onclick="event.stopPropagation(); ${isDl ? `removeDownload('${escAttr(s.id)}')` : `downloadSongById('${escAttr(s.id)}')`}" title="${isDl ? 'Remove' : 'Download'}">${isDl ? '✓' : '↓'}</button>
     </div>`;
@@ -3413,7 +3515,9 @@ function playSongFromSearch(id, lang) {
   activeCollectionPool = null;
   bollywoodCategoryPool = null;
   let song;
-  if (lang === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
+  // Check API search results first (for live search songs not in local DB)
+  song = apiSearchResultsMap.get(id);
+  if (!song && lang === 'hindi' && typeof BollywoodSongsDB !== 'undefined') {
     song = BollywoodSongsDB.SONGS_DB.find(s => s.id === id);
   }
   if (!song && homeFeed?.songs?.length) {
@@ -3446,13 +3550,33 @@ function initSearch() {
     warmSearchIndex();
   }, { once: true });
   let debounce;
+  let apiDebounce;
   input.addEventListener('input', () => {
     clearTimeout(debounce);
+    clearTimeout(apiDebounce);
     const q = input.value.trim();
     clearBtn.style.display = q ? 'block' : 'none';
+
+    // Immediate local DB results
     debounce = setTimeout(() => {
       renderSearchResults(performSearch(q), q);
     }, IS_MOBILE ? 180 : 120);
+
+    // Async API results (merge with local after slight delay)
+    if (q.length >= 2) {
+      apiDebounce = setTimeout(async () => {
+        const currentQuery = input.value.trim();
+        if (currentQuery !== q) return;
+        const apiResults = await searchJioSaavnAPI(q);
+        if (input.value.trim() !== q) return;
+        if (apiResults.length) {
+          // Store in map so playSongFromSearch can find them
+          for (const s of apiResults) apiSearchResultsMap.set(s.id, s);
+          const localResults = performSearch(q);
+          renderSearchResults(mergeSearchResults(apiResults, localResults), q);
+        }
+      }, IS_MOBILE ? 400 : 300);
+    }
   });
 }
 
