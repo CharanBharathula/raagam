@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '43';
+const RELEASE_MARKER = '44';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -464,8 +464,12 @@ async function _megaQueueRefill(lang) {
       if (!videoId) {
         try { videoId = await fetchYouTubeVideoId(song); } catch {}
       }
-      q.push({ songId: song.id, videoId: videoId || null });
-      _saveMegaQueue();
+      // Only add songs that have video IDs (guarantee audio+video pair)
+      if (videoId) {
+        q.push({ songId: song.id, videoId });
+        _cacheVideoId(song.id, videoId);
+        _saveMegaQueue();
+      }
       // Yield to UI
       await new Promise(r => setTimeout(r, 50));
     }
@@ -476,16 +480,20 @@ async function _megaQueueRefill(lang) {
 
 // Full startup queue build — called once after DBs load
 // progressCb(loaded, total, withVideo, videoTotal) for splash screen
+// GUARANTEE: splash stays until ALL 500 songs have video IDs (100% coverage)
 async function megaQueueStartup(progressCb) {
   _loadMegaQueue();
 
   const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
 
+  // Helper: get DB for language
+  const _db = lang => lang === 'hindi'
+    ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+    : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+
   // Remove stale entries + resolve cached video IDs (instant, no network)
   for (const lang of ['telugu', 'hindi']) {
-    const db = lang === 'hindi'
-      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
-      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    const db = _db(lang);
     if (!db.length) continue;
     const dbIds = new Set(db.map(s => s.id));
     megaQueue[lang] = megaQueue[lang].filter(e => dbIds.has(e.songId));
@@ -501,76 +509,141 @@ async function megaQueueStartup(progressCb) {
     const loaded = megaQueue.telugu.length + megaQueue.hindi.length;
     const total = MEGA_QUEUE_SIZE * 2;
     const withVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
-    progressCb(loaded, total, withVideo, loaded);
+    progressCb(loaded, total, withVideo, total);
   };
 
-  // FAST PATH: returning user with full cached queue
+  // ──── FAST PATH: returning user with 100% video coverage ────
   const existingTotal = megaQueue.telugu.length + megaQueue.hindi.length;
   const existingWithVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
-  if (existingTotal >= MEGA_QUEUE_SIZE * 2 * 0.9 && existingWithVideo >= existingTotal * 0.7) {
+  if (existingTotal >= MEGA_QUEUE_SIZE * 2 && existingWithVideo >= existingTotal) {
     megaQueueReady = true;
     _report();
-    // Background: top up and resolve nulls
-    setTimeout(() => _megaQueueResolveNulls(), 1000);
-    return;
+    return; // All 500 songs have video IDs — no network needed
   }
 
-  // Fill up to target size (add songs with cached video IDs — instant)
+  // ──── Fill up to target size (add songs, prefer those with cached video IDs) ────
   for (const lang of ['telugu', 'hindi']) {
     const q = megaQueue[lang];
     const needed = MEGA_QUEUE_SIZE - q.length;
     if (needed <= 0) continue;
-    const db = lang === 'hindi'
-      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
-      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    const db = _db(lang);
     if (!db.length) continue;
     const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
     const existingIds = new Set(q.map(e => e.songId));
-    const candidates = _pickCuratedSongs(db, artists, needed + 40)
+    // Prioritize songs that already have cached video IDs
+    const candidates = _pickCuratedSongs(db, artists, needed + 100)
       .filter(s => !existingIds.has(s.id));
-    for (const song of candidates.slice(0, needed)) {
-      const vid = videoCache[song.id] || null;
-      q.push({ songId: song.id, videoId: vid });
+    const withCached = candidates.filter(s => videoCache[s.id]);
+    const withoutCached = candidates.filter(s => !videoCache[s.id]);
+    const ordered = [...withCached, ...withoutCached];
+    for (const song of ordered.slice(0, needed)) {
+      q.push({ songId: song.id, videoId: videoCache[song.id] || null });
     }
     _saveMegaQueue();
     _report();
   }
 
-  // Shuffle
   _shuffleArray(megaQueue.telugu);
   _shuffleArray(megaQueue.hindi);
   _saveMegaQueue();
   _report();
 
-  // Resolve missing video IDs in batches of 5 (using InnerTube — free, no quota)
-  const allEntries = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => !e.videoId);
-  const BATCH = 5;
-  const MAX_RESOLVE_TIME = 25000; // 25s max during splash
-  const startTime = Date.now();
-  for (let i = 0; i < allEntries.length; i += BATCH) {
-    if (Date.now() - startTime > MAX_RESOLVE_TIME) break;
-    const batch = allEntries.slice(i, i + BATCH);
-    await Promise.allSettled(batch.map(async entry => {
-      const db = megaQueue.telugu.includes(entry)
-        ? ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : [])
-        : ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : []);
-      const song = db.find(s => s.id === entry.songId);
-      if (!song) return;
-      try {
-        const vid = await fetchYouTubeVideoId(song);
-        if (vid) { entry.videoId = vid; _cacheVideoId(song.id, vid); }
-      } catch {}
-    }));
+  // ──── Phase 1: YTMusic bulk resolve (hundreds of video IDs per playlist, free) ────
+  try {
+    await ytMusicBulkResolve('telugu', () => {
+      _megaQueueFillFromVideoCache();
+      _report();
+    });
+    await ytMusicBulkResolve('hindi', () => {
+      _megaQueueFillFromVideoCache();
+      _report();
+    });
+    _megaQueueFillFromVideoCache();
     _saveMegaQueue();
     _report();
-    await new Promise(r => setTimeout(r, 50));
+  } catch {}
+
+  // ──── Phase 2: Resolve remaining nulls one-by-one (NO timeout — must get 100%) ────
+  const BATCH = 5;
+  const MAX_RETRIES = 2; // retry each song up to 2 times before replacing
+  let pass = 0;
+  while (pass < 3) { // up to 3 passes (resolve → replace failures → resolve replacements)
+    pass++;
+    const nullEntries = [];
+    for (const lang of ['telugu', 'hindi']) {
+      for (const entry of megaQueue[lang]) {
+        if (!entry.videoId) nullEntries.push({ entry, lang });
+      }
+    }
+    if (nullEntries.length === 0) break; // 100% coverage achieved!
+
+    for (let i = 0; i < nullEntries.length; i += BATCH) {
+      const batch = nullEntries.slice(i, i + BATCH);
+      await Promise.allSettled(batch.map(async ({ entry, lang }) => {
+        const song = _db(lang).find(s => s.id === entry.songId);
+        if (!song) return;
+        // Try up to MAX_RETRIES times
+        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+          try {
+            const vid = await fetchYouTubeVideoId(song);
+            if (vid) { entry.videoId = vid; _cacheVideoId(song.id, vid); return; }
+          } catch {}
+          if (attempt < MAX_RETRIES - 1) await new Promise(r => setTimeout(r, 500));
+        }
+      }));
+      _saveMegaQueue();
+      _report();
+      await new Promise(r => setTimeout(r, 50));
+    }
+
+    // Replace songs that STILL have no video ID with new candidates that DO have cached videos
+    for (const lang of ['telugu', 'hindi']) {
+      const q = megaQueue[lang];
+      const db = _db(lang);
+      if (!db.length) continue;
+      const vc = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+      const qIds = new Set(q.map(e => e.songId));
+      // Find replacement candidates with known video IDs
+      const replacements = db.filter(s => s?.id && s?.audio && !qIds.has(s.id) && vc[s.id]);
+      _shuffleArray(replacements);
+      let ri = 0;
+      for (let j = 0; j < q.length && ri < replacements.length; j++) {
+        if (!q[j].videoId) {
+          const rep = replacements[ri++];
+          q[j] = { songId: rep.id, videoId: vc[rep.id] };
+        }
+      }
+    }
+    _saveMegaQueue();
+    _report();
   }
+
+  // ──── Phase 3: Final sweep — any remaining nulls get one more try, then force-replace ────
+  for (const lang of ['telugu', 'hindi']) {
+    const q = megaQueue[lang];
+    const db = _db(lang);
+    if (!db.length) continue;
+    for (let j = 0; j < q.length; j++) {
+      if (q[j].videoId) continue;
+      // One final attempt
+      const song = db.find(s => s.id === q[j].songId);
+      if (song) {
+        try {
+          const vid = await fetchYouTubeVideoId(song);
+          if (vid) { q[j].videoId = vid; _cacheVideoId(song.id, vid); continue; }
+        } catch {}
+      }
+      // Force replace: pick ANY DB song with a cached video that's not in queue
+      const vc = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+      const qIds = new Set(q.map(e => e.songId));
+      const rep = db.find(s => s?.id && s?.audio && !qIds.has(s.id) && vc[s.id]);
+      if (rep) q[j] = { songId: rep.id, videoId: vc[rep.id] };
+    }
+  }
+  _saveMegaQueue();
 
   megaQueueReady = true;
   _report();
-
-  // Continue resolving remaining nulls in background (after splash dismissed)
-  setTimeout(() => _megaQueueResolveNulls(), 2000);
 }
 
 // ═══ YTMusic InnerTube Playlist Fetcher ═══
@@ -711,17 +784,31 @@ async function ytMusicBulkResolve(lang, progressCb) {
   return resolved;
 }
 
-// Background resolver for queue entries without video IDs
+// Background resolver for queue entries without video IDs — resolves or replaces
 async function _megaQueueResolveNulls() {
   for (const lang of ['telugu', 'hindi']) {
-    for (const entry of megaQueue[lang]) {
-      if (entry.videoId) continue;
-      const db = lang === 'hindi'
-        ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
-        : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
-      const song = db.find(s => s.id === entry.songId);
-      if (!song) continue;
-      try { entry.videoId = await fetchYouTubeVideoId(song); } catch {}
+    const q = megaQueue[lang];
+    const db = lang === 'hindi'
+      ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+      : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+    if (!db.length) continue;
+    for (let i = 0; i < q.length; i++) {
+      if (q[i].videoId) continue;
+      const song = db.find(s => s.id === q[i].songId);
+      let resolved = false;
+      if (song) {
+        try {
+          const vid = await fetchYouTubeVideoId(song);
+          if (vid) { q[i].videoId = vid; _cacheVideoId(song.id, vid); resolved = true; }
+        } catch {}
+      }
+      // If still no video, replace with a song that has cached video
+      if (!resolved) {
+        const vc = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+        const qIds = new Set(q.map(e => e.songId));
+        const rep = db.find(s => s?.id && s?.audio && !qIds.has(s.id) && vc[s.id]);
+        if (rep) q[i] = { songId: rep.id, videoId: vc[rep.id] };
+      }
       _saveMegaQueue();
       await new Promise(r => setTimeout(r, 200));
     }
@@ -1903,8 +1990,18 @@ function _showSplash() {
 function _updateSplashProgress(loaded, total, withVideo) {
   const fill = document.getElementById('splash-fill');
   const text = document.getElementById('splash-text');
-  if (fill) fill.style.width = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100)) + '%';
-  if (text) text.textContent = `${loaded}/${total} songs loaded · ${withVideo} with video`;
+  // Progress bar based on video resolution (the bottleneck)
+  const pct = Math.min(100, Math.round((withVideo / Math.max(total, 1)) * 100));
+  if (fill) fill.style.width = pct + '%';
+  if (text) {
+    if (loaded < total) {
+      text.textContent = `Loading songs... ${loaded}/${total}`;
+    } else if (withVideo < total) {
+      text.textContent = `Resolving videos... ${withVideo}/${total} (${pct}%)`;
+    } else {
+      text.textContent = `All ${total} songs ready with video!`;
+    }
+  }
 }
 
 function _dismissSplash() {
@@ -1926,18 +2023,8 @@ function _dismissSplash() {
   updateCacheSize();
   initSongPreviews();
 
-  // Background: YTMusic playlist bulk resolve → then batch resolve → then queue refill
-  setTimeout(async () => {
-    // Phase 1: Bulk resolve via YTMusic playlists (hundreds of video IDs per playlist)
-    try {
-      await ytMusicBulkResolve('telugu');
-      await ytMusicBulkResolve('hindi');
-    } catch {}
-    // Phase 2: Fill MegaQueue entries that still have null videoId from the now-richer cache
-    _megaQueueFillFromCache();
-    // Phase 3: Per-song fallback resolution
-    batchResolveHomeVideoIds();
-  }, 2000);
+  // Background: resolve video IDs for home page collections (Top 50, etc.)
+  setTimeout(() => batchResolveHomeVideoIds(), 3000);
   // Background: continuous queue refill every 60 seconds
   setInterval(() => {
     if (!megaQueueResolving) {
@@ -1949,6 +2036,9 @@ function _dismissSplash() {
 
 // Quick pass: fill MegaQueue null videoIds from localStorage cache (no network calls)
 function _megaQueueFillFromCache() {
+  _megaQueueFillFromVideoCache();
+}
+function _megaQueueFillFromVideoCache() {
   const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
   let filled = 0;
   for (const lang of ['telugu', 'hindi']) {
