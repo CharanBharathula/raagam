@@ -478,9 +478,52 @@ async function _megaQueueRefill(lang) {
   }
 }
 
+// Fast video ID lookup — InnerTube only, accepts first decent result, 3s timeout
+// Used during splash to resolve many songs quickly (vs fetchYouTubeVideoId which is thorough but slow)
+async function _fastVideoResolve(song) {
+  if (!song?.name) return null;
+  // Check caches first
+  const cache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+  if (cache[song.id]) return cache[song.id];
+  if (videoSearchCache[song.id]?.videoId) return videoSearchCache[song.id].videoId;
+
+  const name = decodeHtml(song.name || '').trim();
+  const artist = (song.artists || song.artist || '').split(',')[0].trim();
+  const query = `${name} ${artist} song`;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 3500);
+  try {
+    const res = await fetch('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: ctrl.signal,
+      body: JSON.stringify({
+        context: { client: { clientName: 'WEB', clientVersion: '2.20250101.00.00', hl: 'en', gl: 'IN' } },
+        query
+      })
+    });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const contents = data?.contents?.twoColumnSearchResultsRenderer?.primaryContents?.sectionListRenderer?.contents || [];
+    for (const section of contents) {
+      const items = section?.itemSectionRenderer?.contents || [];
+      for (const item of items) {
+        const vid = item?.videoRenderer?.videoId;
+        if (vid && vid.length === 11) {
+          _cacheVideoId(song.id, vid);
+          videoSearchCache[song.id] = { videoId: vid, searched: true };
+          return vid;
+        }
+      }
+    }
+  } catch { clearTimeout(t); }
+  return null;
+}
+
 // Full startup queue build — called once after DBs load
 // progressCb(loaded, total, withVideo, videoTotal) for splash screen
-// GUARANTEE: splash stays until ALL 500 songs have video IDs (100% coverage)
 async function megaQueueStartup(progressCb) {
   _loadMegaQueue();
 
@@ -497,7 +540,6 @@ async function megaQueueStartup(progressCb) {
     if (!db.length) continue;
     const dbIds = new Set(db.map(s => s.id));
     megaQueue[lang] = megaQueue[lang].filter(e => dbIds.has(e.songId));
-    // Fill null videoIds from localStorage cache
     for (const entry of megaQueue[lang]) {
       if (!entry.videoId && videoCache[entry.songId]) entry.videoId = videoCache[entry.songId];
     }
@@ -512,13 +554,15 @@ async function megaQueueStartup(progressCb) {
     progressCb(loaded, total, withVideo, total);
   };
 
-  // ──── FAST PATH: returning user with 100% video coverage ────
+  // ──── FAST PATH: returning user with full queue + high video coverage ────
   const existingTotal = megaQueue.telugu.length + megaQueue.hindi.length;
   const existingWithVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
-  if (existingTotal >= MEGA_QUEUE_SIZE * 2 && existingWithVideo >= existingTotal) {
+  if (existingTotal >= MEGA_QUEUE_SIZE * 2 * 0.95 && existingWithVideo >= existingTotal * 0.95) {
     megaQueueReady = true;
     _report();
-    return; // All 500 songs have video IDs — no network needed
+    // Background: resolve remaining few nulls
+    setTimeout(() => _megaQueueResolveNulls(), 2000);
+    return;
   }
 
   // ──── Fill up to target size (add songs, prefer those with cached video IDs) ────
@@ -530,9 +574,9 @@ async function megaQueueStartup(progressCb) {
     if (!db.length) continue;
     const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
     const existingIds = new Set(q.map(e => e.songId));
-    // Prioritize songs that already have cached video IDs
-    const candidates = _pickCuratedSongs(db, artists, needed + 100)
+    const candidates = _pickCuratedSongs(db, artists, needed + 200)
       .filter(s => !existingIds.has(s.id));
+    // Strongly prioritize songs that already have cached video IDs
     const withCached = candidates.filter(s => videoCache[s.id]);
     const withoutCached = candidates.filter(s => !videoCache[s.id]);
     const ordered = [...withCached, ...withoutCached];
@@ -550,60 +594,47 @@ async function megaQueueStartup(progressCb) {
 
   // ──── Phase 1: YTMusic bulk resolve (hundreds of video IDs per playlist, free) ────
   try {
-    await ytMusicBulkResolve('telugu', () => {
-      _megaQueueFillFromVideoCache();
-      _report();
-    });
-    await ytMusicBulkResolve('hindi', () => {
-      _megaQueueFillFromVideoCache();
-      _report();
-    });
+    await ytMusicBulkResolve('telugu', () => { _megaQueueFillFromVideoCache(); _report(); });
+    await ytMusicBulkResolve('hindi', () => { _megaQueueFillFromVideoCache(); _report(); });
     _megaQueueFillFromVideoCache();
     _saveMegaQueue();
     _report();
   } catch {}
 
-  // ──── Phase 2: Resolve remaining nulls one-by-one (NO timeout — must get 100%) ────
-  const BATCH = 5;
-  const MAX_RETRIES = 2; // retry each song up to 2 times before replacing
-  let pass = 0;
-  while (pass < 3) { // up to 3 passes (resolve → replace failures → resolve replacements)
-    pass++;
+  // ──── Phase 2: Fast per-song resolve for remaining nulls (InnerTube, 3s/song, 10 parallel) ────
+  const BATCH = 10;
+  const MAX_SPLASH_TIME = 90000; // 90s max during splash
+  const startTime = Date.now();
+
+  for (let pass = 0; pass < 2; pass++) {
     const nullEntries = [];
     for (const lang of ['telugu', 'hindi']) {
       for (const entry of megaQueue[lang]) {
         if (!entry.videoId) nullEntries.push({ entry, lang });
       }
     }
-    if (nullEntries.length === 0) break; // 100% coverage achieved!
+    if (nullEntries.length === 0) break;
 
     for (let i = 0; i < nullEntries.length; i += BATCH) {
+      if (Date.now() - startTime > MAX_SPLASH_TIME) break;
       const batch = nullEntries.slice(i, i + BATCH);
       await Promise.allSettled(batch.map(async ({ entry, lang }) => {
         const song = _db(lang).find(s => s.id === entry.songId);
         if (!song) return;
-        // Try up to MAX_RETRIES times
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-          try {
-            const vid = await fetchYouTubeVideoId(song);
-            if (vid) { entry.videoId = vid; _cacheVideoId(song.id, vid); return; }
-          } catch {}
-          if (attempt < MAX_RETRIES - 1) await new Promise(r => setTimeout(r, 500));
-        }
+        const vid = await _fastVideoResolve(song);
+        if (vid) entry.videoId = vid;
       }));
       _saveMegaQueue();
       _report();
-      await new Promise(r => setTimeout(r, 50));
     }
 
-    // Replace songs that STILL have no video ID with new candidates that DO have cached videos
+    // After each pass: replace remaining nulls with DB songs that have cached video IDs
     for (const lang of ['telugu', 'hindi']) {
       const q = megaQueue[lang];
       const db = _db(lang);
       if (!db.length) continue;
       const vc = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
       const qIds = new Set(q.map(e => e.songId));
-      // Find replacement candidates with known video IDs
       const replacements = db.filter(s => s?.id && s?.audio && !qIds.has(s.id) && vc[s.id]);
       _shuffleArray(replacements);
       let ri = 0;
@@ -616,34 +647,14 @@ async function megaQueueStartup(progressCb) {
     }
     _saveMegaQueue();
     _report();
+    if (Date.now() - startTime > MAX_SPLASH_TIME) break;
   }
-
-  // ──── Phase 3: Final sweep — any remaining nulls get one more try, then force-replace ────
-  for (const lang of ['telugu', 'hindi']) {
-    const q = megaQueue[lang];
-    const db = _db(lang);
-    if (!db.length) continue;
-    for (let j = 0; j < q.length; j++) {
-      if (q[j].videoId) continue;
-      // One final attempt
-      const song = db.find(s => s.id === q[j].songId);
-      if (song) {
-        try {
-          const vid = await fetchYouTubeVideoId(song);
-          if (vid) { q[j].videoId = vid; _cacheVideoId(song.id, vid); continue; }
-        } catch {}
-      }
-      // Force replace: pick ANY DB song with a cached video that's not in queue
-      const vc = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
-      const qIds = new Set(q.map(e => e.songId));
-      const rep = db.find(s => s?.id && s?.audio && !qIds.has(s.id) && vc[s.id]);
-      if (rep) q[j] = { songId: rep.id, videoId: vc[rep.id] };
-    }
-  }
-  _saveMegaQueue();
 
   megaQueueReady = true;
   _report();
+
+  // Background: continue resolving any remaining nulls after splash
+  setTimeout(() => _megaQueueResolveNulls(), 3000);
 }
 
 // ═══ YTMusic InnerTube Playlist Fetcher ═══
@@ -1990,16 +2001,22 @@ function _showSplash() {
 function _updateSplashProgress(loaded, total, withVideo) {
   const fill = document.getElementById('splash-fill');
   const text = document.getElementById('splash-text');
-  // Progress bar based on video resolution (the bottleneck)
-  const pct = Math.min(100, Math.round((withVideo / Math.max(total, 1)) * 100));
+  // Progress: weighted — songs loading is 20%, video resolution is 80%
+  let pct;
+  if (loaded < total) {
+    pct = Math.round((loaded / Math.max(total, 1)) * 20);
+  } else {
+    pct = 20 + Math.round((withVideo / Math.max(total, 1)) * 80);
+  }
+  pct = Math.min(100, pct);
   if (fill) fill.style.width = pct + '%';
   if (text) {
     if (loaded < total) {
       text.textContent = `Loading songs... ${loaded}/${total}`;
     } else if (withVideo < total) {
-      text.textContent = `Resolving videos... ${withVideo}/${total} (${pct}%)`;
+      text.textContent = `Finding videos... ${withVideo}/${total}`;
     } else {
-      text.textContent = `All ${total} songs ready with video!`;
+      text.textContent = `Ready! ${total} songs with video`;
     }
   }
 }
