@@ -16,6 +16,18 @@
 </head>
 <body>
 
+  <!-- ═══ SPLASH SCREEN (shown during queue preload) ═══ -->
+  <div id="splash-screen" class="splash-screen hidden">
+    <div class="splash-inner">
+      <div class="splash-logo">Raagam</div>
+      <div class="splash-sub">Loading your music...</div>
+      <div class="splash-progress-wrap">
+        <div class="splash-bar"><div class="splash-fill" id="splash-fill"></div></div>
+        <div class="splash-text" id="splash-text">Preparing queue...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══ LANDING PAGE ═══ -->
   <div id="landing" class="landing">
     <div class="landing-scroll">
@@ -263,6 +275,10 @@
           <h3>🎤 Popular Telugu Collections</h3>
           <div id="home-telugu-collections" class="home-collection-grid"></div>
         </div>
+        <div class="home-section">
+          <h3>🎬 Popular Telugu Soundtracks</h3>
+          <div id="home-telugu-movies" class="home-collection-grid"></div>
+        </div>
       </div>
     </div>
 
@@ -384,6 +400,15 @@
       </div>
     </div>
 
+    <!-- Movie Browse Page -->
+    <div id="page-movie" class="page">
+      <div class="page-scroll">
+        <div class="movie-hero" id="movie-hero"></div>
+        <div class="movie-actions" id="movie-actions"></div>
+        <div class="movie-songs-list" id="movie-songs-list"></div>
+      </div>
+    </div>
+
     <!-- Bollywood Page -->
     <div id="page-bollywood" class="page">
       <div class="page-scroll">
@@ -414,6 +439,10 @@
           <h3>🌟 Popular Bollywood Collections</h3>
           <div id="home-hindi-collections" class="home-collection-grid"></div>
         </div>
+        <div class="home-section">
+          <h3>🎬 Popular Bollywood Soundtracks</h3>
+          <div id="home-hindi-movies" class="home-collection-grid"></div>
+        </div>
       </div>
     </div>
 
@@ -430,9 +459,9 @@
   <script src="config.js"></script>
   <!-- songs-db.js and bollywood-songs-db.js loaded lazily by app.js for faster startup -->
   <script src="ai-engine.js"></script>
-  <script src="app.js?v=41"></script>
+  <script src="app.js?v=42"></script>
 <script>
-const RELEASE_STATIC = '41';
+const RELEASE_STATIC = '42';
 (async () => {
   try {
     const markerEl = document.getElementById('release-marker');

@@ -57,7 +57,7 @@ let authMode = 'login';
 let currentAudioFallbackUrls = [];
 let currentAudioFallbackIndex = 0;
 let currentSongStreamRefreshed = false;
-const RELEASE_MARKER = '41';
+const RELEASE_MARKER = '42';
 const AAC_CODEC = 'audio/mp4; codecs="mp4a.40.2"';
 
 const CURATED_TELUGU_ARTISTS = [
@@ -175,6 +175,9 @@ function _resolvedVideoId(songId) {
   const pf = prefetchQueue.find(e => e.song.id === songId);
   if (pf?.videoId) return pf.videoId;
   if (videoSearchCache[songId]?.videoId) return videoSearchCache[songId].videoId;
+  // Check MegaQueue entries
+  const mq = megaQueue.telugu.find(e => e.songId === songId) || megaQueue.hindi.find(e => e.songId === songId);
+  if (mq?.videoId) return mq.videoId;
   return _getLocalVideoId(songId);
 }
 
@@ -364,7 +367,7 @@ function _pullPreloadedAudioUrl(songId) {
 
 // ═══ MEGA QUEUE — Pre-built song queue with video IDs ═══
 const MEGA_QUEUE_KEY = 'raagam_mega_queue';
-const MEGA_QUEUE_SIZE = 50; // per language
+const MEGA_QUEUE_SIZE = 100; // per language (200 total)
 let megaQueue = { telugu: [], hindi: [] }; // { songId, videoId }[]
 let megaQueueReady = false;
 let megaQueueResolving = false;
@@ -472,10 +475,13 @@ async function _megaQueueRefill(lang) {
 }
 
 // Full startup queue build — called once after DBs load
+// progressCb(loaded, total, withVideo, videoTotal) for splash screen
 async function megaQueueStartup(progressCb) {
   _loadMegaQueue();
 
-  // Remove entries whose songs no longer exist in DB
+  const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
+
+  // Remove stale entries + resolve cached video IDs (instant, no network)
   for (const lang of ['telugu', 'hindi']) {
     const db = lang === 'hindi'
       ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
@@ -483,65 +489,88 @@ async function megaQueueStartup(progressCb) {
     if (!db.length) continue;
     const dbIds = new Set(db.map(s => s.id));
     megaQueue[lang] = megaQueue[lang].filter(e => dbIds.has(e.songId));
-  }
-
-  const videoCache = JSON.parse(localStorage.getItem('raagam_video_cache') || '{}');
-
-  // Resolve missing video IDs from localStorage cache (instant, no API calls)
-  let resolvedFromCache = 0;
-  for (const lang of ['telugu', 'hindi']) {
+    // Fill null videoIds from localStorage cache
     for (const entry of megaQueue[lang]) {
-      if (!entry.videoId && videoCache[entry.songId]) {
-        entry.videoId = videoCache[entry.songId];
-        resolvedFromCache++;
-      }
+      if (!entry.videoId && videoCache[entry.songId]) entry.videoId = videoCache[entry.songId];
     }
   }
-  if (resolvedFromCache > 0) _saveMegaQueue();
+  _saveMegaQueue();
 
-  // Fill up to target size
+  const _report = () => {
+    if (!progressCb) return;
+    const loaded = megaQueue.telugu.length + megaQueue.hindi.length;
+    const total = MEGA_QUEUE_SIZE * 2;
+    const withVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
+    progressCb(loaded, total, withVideo, loaded);
+  };
+
+  // FAST PATH: returning user with full cached queue
+  const existingTotal = megaQueue.telugu.length + megaQueue.hindi.length;
+  const existingWithVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
+  if (existingTotal >= MEGA_QUEUE_SIZE * 2 * 0.9 && existingWithVideo >= existingTotal * 0.7) {
+    megaQueueReady = true;
+    _report();
+    // Background: top up and resolve nulls
+    setTimeout(() => _megaQueueResolveNulls(), 1000);
+    return;
+  }
+
+  // Fill up to target size (add songs with cached video IDs — instant)
   for (const lang of ['telugu', 'hindi']) {
     const q = megaQueue[lang];
     const needed = MEGA_QUEUE_SIZE - q.length;
     if (needed <= 0) continue;
-
     const db = lang === 'hindi'
       ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
       : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
     if (!db.length) continue;
-
     const artists = lang === 'hindi' ? CURATED_HINDI_ARTISTS : CURATED_TELUGU_ARTISTS;
     const existingIds = new Set(q.map(e => e.songId));
-    const candidates = _pickCuratedSongs(db, artists, needed + 30)
+    const candidates = _pickCuratedSongs(db, artists, needed + 40)
       .filter(s => !existingIds.has(s.id));
-
-    let added = 0;
-    for (const song of candidates) {
-      if (added >= needed) break;
-      let videoId = videoCache[song.id] || null;
-      if (!videoId) {
-        // Try resolving — but don't block too long per song
-        try { videoId = await fetchYouTubeVideoId(song); } catch {}
-      }
-      q.push({ songId: song.id, videoId: videoId || null });
-      added++;
-      if (progressCb) {
-        const total = (megaQueue.telugu.length + megaQueue.hindi.length);
-        progressCb(total, MEGA_QUEUE_SIZE * 2);
-      }
-      _saveMegaQueue();
-      await new Promise(r => setTimeout(r, 30));
+    for (const song of candidates.slice(0, needed)) {
+      const vid = videoCache[song.id] || null;
+      q.push({ songId: song.id, videoId: vid });
     }
+    _saveMegaQueue();
+    _report();
   }
 
-  // Shuffle both queues
+  // Shuffle
   _shuffleArray(megaQueue.telugu);
   _shuffleArray(megaQueue.hindi);
   _saveMegaQueue();
-  megaQueueReady = true;
+  _report();
 
-  // Background: resolve any entries that still have null videoId
-  _megaQueueResolveNulls();
+  // Resolve missing video IDs in batches of 5 (using InnerTube — free, no quota)
+  const allEntries = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => !e.videoId);
+  const BATCH = 5;
+  const MAX_RESOLVE_TIME = 25000; // 25s max during splash
+  const startTime = Date.now();
+  for (let i = 0; i < allEntries.length; i += BATCH) {
+    if (Date.now() - startTime > MAX_RESOLVE_TIME) break;
+    const batch = allEntries.slice(i, i + BATCH);
+    await Promise.allSettled(batch.map(async entry => {
+      const db = megaQueue.telugu.includes(entry)
+        ? ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : [])
+        : ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : []);
+      const song = db.find(s => s.id === entry.songId);
+      if (!song) return;
+      try {
+        const vid = await fetchYouTubeVideoId(song);
+        if (vid) { entry.videoId = vid; _cacheVideoId(song.id, vid); }
+      } catch {}
+    }));
+    _saveMegaQueue();
+    _report();
+    await new Promise(r => setTimeout(r, 50));
+  }
+
+  megaQueueReady = true;
+  _report();
+
+  // Continue resolving remaining nulls in background (after splash dismissed)
+  setTimeout(() => _megaQueueResolveNulls(), 2000);
 }
 
 // Background resolver for queue entries without video IDs
@@ -1696,7 +1725,6 @@ function ensureReleaseMarker() {
 function enterApp() {
   document.getElementById('landing').classList.add('hidden');
   document.getElementById('auth-page').classList.add('hidden');
-  document.getElementById('app-container').classList.remove('hidden');
   document.getElementById('auth-submit').disabled = false;
 
   ensureReleaseMarker();
@@ -1704,14 +1732,51 @@ function enterApp() {
     hasShownCodecWarning = true;
     showToast('This browser cannot decode AAC streams. Open Raagam in Chrome or Edge.');
   }
-  
+
   document.getElementById('profile-name').textContent = currentUser.displayName || currentUser.username;
   document.getElementById('profile-sub-text').innerHTML = `@${escHtml(currentUser.username)} <span class="sync-badge">💾 Local</span>`;
-  
   const h = new Date().getHours();
   const greeting = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
   document.getElementById('home-greeting').textContent = `${greeting}, ${currentUser.displayName || currentUser.username}`;
-  
+
+  // Show splash screen while loading DBs + building queue
+  _showSplash();
+
+  // Load both DBs in parallel, then build MegaQueue
+  Promise.all([loadTeluguDb(), loadBollywoodDb()]).then(() => {
+    updateHomeStats();
+    if (!IS_MOBILE) warmSearchIndex();
+    return megaQueueStartup((loaded, total, withVideo, videoTotal) => {
+      _updateSplashProgress(loaded, total, withVideo);
+    });
+  }).then(() => {
+    _dismissSplash();
+  }).catch(() => {
+    // Even if something fails, dismiss splash and show app
+    _dismissSplash();
+  });
+}
+
+function _showSplash() {
+  const splash = document.getElementById('splash-screen');
+  if (splash) { splash.classList.remove('hidden'); splash.classList.remove('splash-fade-out'); }
+}
+
+function _updateSplashProgress(loaded, total, withVideo) {
+  const fill = document.getElementById('splash-fill');
+  const text = document.getElementById('splash-text');
+  if (fill) fill.style.width = Math.min(100, Math.round((loaded / Math.max(total, 1)) * 100)) + '%';
+  if (text) text.textContent = `${loaded}/${total} songs loaded · ${withVideo} with video`;
+}
+
+function _dismissSplash() {
+  const splash = document.getElementById('splash-screen');
+  if (splash) {
+    splash.classList.add('splash-fade-out');
+    setTimeout(() => { splash.classList.add('hidden'); }, 450);
+  }
+  // Now show the actual app
+  document.getElementById('app-container').classList.remove('hidden');
   loadDownloadedSongs();
   loadVocalAltCache();
   loadVoiceMode();
@@ -1723,43 +1788,15 @@ function enterApp() {
   updateCacheSize();
   initSongPreviews();
 
-  // Lazy-load song databases then build MegaQueue
-  const idleCb = window.requestIdleCallback || (fn => setTimeout(fn, 100));
-  idleCb(() => {
-    loadTeluguDb().then(() => {
-      updateHomeStats();
-      if (!IS_MOBILE) warmSearchIndex();
-      // Start MegaQueue build after Telugu DB loads
-      _startMegaQueueBuild();
-    });
-  }, { timeout: 2000 });
-  idleCb(() => {
-    loadBollywoodDb().then(() => {
-      updateHomeStats();
-      // Rebuild MegaQueue with Bollywood songs too
-      _startMegaQueueBuild();
-    });
-  }, { timeout: 4000 });
-}
-
-function _startMegaQueueBuild() {
-  if (megaQueueReady) return;
-  const badge = document.getElementById('mega-queue-status');
-  megaQueueStartup((loaded, total) => {
-    if (badge) {
-      badge.textContent = `Prefetching ${loaded}/${total} songs...`;
-      badge.classList.remove('hidden');
+  // Background: batch-resolve video IDs for home page songs
+  setTimeout(() => batchResolveHomeVideoIds(), 3000);
+  // Background: continuous queue refill every 60 seconds
+  setInterval(() => {
+    if (!megaQueueResolving) {
+      _megaQueueRefill('telugu');
+      setTimeout(() => _megaQueueRefill('hindi'), 5000);
     }
-  }).then(() => {
-    if (badge) {
-      const count = megaQueue.telugu.length + megaQueue.hindi.length;
-      const withVideo = [...megaQueue.telugu, ...megaQueue.hindi].filter(e => e.videoId).length;
-      badge.textContent = `${count} songs ready (${withVideo} with video)`;
-      setTimeout(() => badge.classList.add('hidden'), 3000);
-    }
-    // After MegaQueue is built, batch-resolve video IDs for home page songs in background
-    setTimeout(() => batchResolveHomeVideoIds(), 2000);
-  });
+  }, 60000);
 }
 
 // ═══ OFFLINE / DOWNLOAD ═══
@@ -2244,43 +2281,24 @@ function switchToVideoMode() {
       if (badge) badge.textContent = 'CANVAS';
     }
   } else {
-    // Search still in progress — keep showing canvas while waiting
+    // No video available yet — show canvas visualizer (never show "SEARCHING...")
     video?.classList.add('hidden');
     ytFrame?.classList.add('hidden');
     visualizer?.classList.remove('hidden');
-    if (badge) badge.textContent = 'SEARCHING...';
+    if (badge) badge.textContent = 'CANVAS';
 
-    // If there's a pending search, wait for it and activate immediately
+    // Try to find video in background — if found, seamlessly upgrade
     const waitSearch = ensureVideoSearch(currentSong);
     if (waitSearch) {
       const songIdAtSwitch = currentSong?.id;
-      const searchTimeoutId = setTimeout(() => {
-        if (!currentSong || currentSong.id !== songIdAtSwitch) return;
-        if (currentMediaMode !== 'video') return;
-        if (badge && badge.textContent === 'SEARCHING...') {
-          badge.textContent = 'CANVAS';
-        }
-      }, 20000);
       waitSearch.then(videoId => {
-        clearTimeout(searchTimeoutId);
-        // Only activate if user is still on the same song and still in video mode
         if (!currentSong || currentSong.id !== songIdAtSwitch) return;
         if (currentMediaMode !== 'video') return;
         if (videoId) {
           currentVideoContent = 'youtube';
           _activateYouTubeIframe(videoId, audio.currentTime);
-        } else if (badge) {
-          badge.textContent = 'CANVAS';
-          showToast('YouTube video not available for this song');
         }
-      }).catch(() => {
-        clearTimeout(searchTimeoutId);
-        if (badge) badge.textContent = 'CANVAS';
-        showToast('Video search failed, try again');
-      });
-    } else {
-      if (badge) badge.textContent = 'CANVAS';
-      showToast('YouTube video not available for this song');
+      }).catch(() => {});
     }
   }
 }
@@ -2646,17 +2664,21 @@ function setupSongMedia(song) {
   if (!currentVideoUrl && cachedVideoId) {
     currentVideoContent = 'youtube';
   }
-  // Prefetch-aware iframe management: preserve prewarmed iframe if it matches this song
+  // Resolve video ID from all caches (MegaQueue, prefetch, localStorage)
   const prefetchedVid = _resolvedVideoId(song.id);
+  const knownVideoId = prefetchedVid || cachedVideoId;
+
   if (prewarmSongId === song.id && prewarmVideoId && ytPrewarmed) {
     // FAST PATH — iframe already loaded with this song's video from prefetch
     currentVideoContent = 'youtube';
   } else {
     ytPrewarmed = false;
     if (ytFrame) { ytFrame.src = 'about:blank'; ytFrame.classList.add('hidden'); }
-    if (!currentVideoUrl && (prefetchedVid || cachedVideoId)) {
+    if (!currentVideoUrl && knownVideoId) {
       currentVideoContent = 'youtube';
-      _prewarmYouTubeIframe(prefetchedVid || cachedVideoId);
+      // ALWAYS prewarm iframe immediately — even in audio mode
+      // This ensures switching to video mid-song is instant
+      _prewarmYouTubeIframe(knownVideoId);
     }
   }
   switchToAudioMode();
@@ -3358,6 +3380,7 @@ function showPage(name) {
     if (!homeShelvesRendered.hindi) renderDynamicHomeContent(false);
   }
   if (name==='player') updatePlayerDownloadBtn();
+  // movie page doesn't need special init — rendered before showPage call
 }
 
 // ═══ LIBRARY (Liked + Offline) ═══
@@ -3699,6 +3722,28 @@ function renderCollections(containerId, collections, language) {
   }).join('');
 }
 
+function renderMovieCollections(containerId, collections, language) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!collections || !collections.length) { container.innerHTML = ''; return; }
+  container.innerHTML = collections.slice(0, 8).map(col => {
+    const title = decodeHtml(col.title || 'Soundtrack');
+    const subtitle = decodeHtml(col.subtitle || '');
+    const coverImg = col.coverImage || '';
+    const imgHtml = coverImg
+      ? `<img class="collection-cover" src="${escAttr(coverImg)}" alt="" loading="lazy" onerror="this.style.display='none'" />`
+      : `<div class="collection-cover collection-cover-placeholder"></div>`;
+    return `<div class="home-collection-card" onclick="showMoviePage('${escAttr(title)}','${escAttr(language)}')">
+      ${imgHtml}
+      <div class="collection-text">
+        <div class="home-collection-title">${escHtml(title)}</div>
+        <div class="home-collection-sub">${escHtml(subtitle)}</div>
+        <div class="home-collection-count">Browse all songs</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 function playCollectionByKey(key) {
   const payload = window.__raagamCollections?.[key];
   if (!payload) return;
@@ -3821,7 +3866,31 @@ function fallbackHomeData(language) {
       };
     });
 
-  const data = { newReleases, top50, collections };
+  // Movie/Album collections: albums with 4+ songs, sorted by year desc
+  const albumMap = {};
+  source.forEach(song => {
+    const album = decodeHtml(String(song?.album || '')).trim();
+    if (!album || album.length < 2) return;
+    const key = normalizeForMatch(album);
+    if (!albumMap[key]) albumMap[key] = { name: album, songs: [], year: 0, image: '' };
+    albumMap[key].songs.push(song);
+    const y = parseInt(song.year || 0);
+    if (y > albumMap[key].year) { albumMap[key].year = y; albumMap[key].image = song.image || albumMap[key].image; }
+  });
+  const movieCollections = Object.values(albumMap)
+    .filter(m => m.songs.length >= 4)
+    .sort((a, b) => b.year - a.year || b.songs.length - a.songs.length)
+    .slice(0, 8)
+    .map(m => ({
+      title: m.name,
+      subtitle: `${m.year} · ${m.songs.length} songs`,
+      count: m.songs.length,
+      songIds: m.songs.map(s => s.id),
+      coverImage: m.image,
+      type: 'movie'
+    }));
+
+  const data = { newReleases, top50, collections, movieCollections };
   fallbackHomeCache[language] = data;
   return data;
 }
@@ -3843,6 +3912,10 @@ function renderHomeLanguageShelves(language, payload, byIdMap) {
   renderShelfSongs(isHindi ? 'home-hindi-top' : 'home-telugu-top', finalTop, language);
   const finalCollections = (collections && collections.length) ? collections : fallback.collections;
   renderCollections(isHindi ? 'home-hindi-collections' : 'home-telugu-collections', finalCollections, language);
+
+  // Render movie soundtrack collections
+  const movieCollections = fallback.movieCollections || [];
+  renderMovieCollections(isHindi ? 'home-hindi-movies' : 'home-telugu-movies', movieCollections, language);
 }
 
 function readFeedCache() {
@@ -4187,44 +4260,43 @@ function renderSearchResults(results, query) {
     return;
   }
 
-  // Group songs by album/movie — show album headers for groups with 2+ songs
+  // Group songs by album/movie — show movie cards for groups with 2+ songs
   const albumGroups = new Map();
   const queryNorm = normalizeForMatch(query);
   for (const s of results) {
     const album = decodeHtml(String(s.album || '')).trim();
     if (!album) continue;
     const albumKey = normalizeForMatch(album);
-    if (!albumGroups.has(albumKey)) albumGroups.set(albumKey, { name: album, songs: [], image: s.image, lang: s.language });
+    if (!albumGroups.has(albumKey)) albumGroups.set(albumKey, { name: album, songs: [], image: s.image, lang: s.language, year: s.year });
     albumGroups.get(albumKey).songs.push(s);
   }
 
-  // Find albums that match the query and have multiple songs — show as movie cards
+  // Show movie cards for albums with 2+ songs (query match OR just grouped naturally)
   const movieMatches = [];
   for (const [key, group] of albumGroups) {
-    if (group.songs.length >= 2 && key.includes(queryNorm)) {
+    if (group.songs.length >= 2) {
+      // Boost albums whose name matches the query
+      group._queryMatch = key.includes(queryNorm) ? 1 : 0;
       movieMatches.push(group);
     }
   }
-  // Sort movie matches by song count desc
-  movieMatches.sort((a, b) => b.songs.length - a.songs.length);
+  movieMatches.sort((a, b) => b._queryMatch - a._queryMatch || b.songs.length - a.songs.length);
 
   let html = '';
 
-  // Render movie/album cards at top (max 3 movie groups)
+  // Render movie/album browse cards at top (up to 5)
   if (movieMatches.length) {
     html += '<div class="search-section-label">Movies / Albums</div>';
-    for (const group of movieMatches.slice(0, 3)) {
-      const albumId = normalizeForMatch(group.name).replace(/\s+/g, '_');
-      html += `<div class="search-movie-card" onclick="toggleMovieSongs('${escAttr(albumId)}')">
+    for (const group of movieMatches.slice(0, 5)) {
+      const langLabel = group.lang === 'hindi' ? 'Hindi' : 'Telugu';
+      const yearLabel = group.year ? `${group.year} · ` : '';
+      html += `<div class="search-movie-card" onclick="showMoviePage('${escAttr(group.name)}','${escAttr(group.lang||'telugu')}')">
         <img class="search-movie-thumb" src="${escAttr(group.image||'')}" alt="" onerror="this.style.display='none'" loading="lazy" />
         <div class="search-movie-info">
           <h4>${escHtml(group.name)}</h4>
-          <p>${group.songs.length} songs · ${group.lang === 'hindi' ? 'Hindi' : 'Telugu'}</p>
+          <p>${yearLabel}${group.songs.length} songs · ${langLabel}</p>
         </div>
-        <span class="search-movie-arrow" id="arrow-${escAttr(albumId)}">▸</span>
-      </div>
-      <div class="search-movie-songs hidden" id="movie-${escAttr(albumId)}">
-        ${group.songs.map(s => _renderSearchSongItem(s)).join('')}
+        <span class="search-movie-browse">Browse ▸</span>
       </div>`;
     }
     html += '<div class="search-section-label">Songs</div>';
@@ -4257,19 +4329,100 @@ function toggleMovieSongs(albumId) {
 }
 
 function browseMovieSongs(albumName, lang) {
-  // Find all songs from this album/movie and display them as a collection
+  showMoviePage(albumName, lang);
+}
+
+// ═══ MOVIE BROWSE PAGE ═══
+function showMoviePage(albumName, lang) {
+  lang = lang || 'telugu';
   const source = lang === 'hindi'
     ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
     : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
-  const albumNorm = normalizeForMatch(albumName);
+  const albumNorm = normalizeForMatch(decodeHtml(albumName));
+  const songs = source.filter(s => normalizeForMatch(decodeHtml(s.album || '')) === albumNorm);
+  if (!songs.length) { showToast('No songs found for this movie'); return; }
+
+  // Sort by track order (duration ascending as proxy) then name
+  songs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  const coverImg = songs[0]?.image || '';
+  const year = songs[0]?.year || '';
+  const artists = [...new Set(songs.map(s => decodeHtml(s.artists || '').split(',')[0].trim()).filter(Boolean))].slice(0, 3).join(', ');
+  const langLabel = lang === 'hindi' ? 'Bollywood' : 'Telugu';
+  const totalDur = songs.reduce((sum, s) => sum + (s.duration || 0), 0);
+  const durMin = Math.round(totalDur / 60);
+
+  // Render hero
+  const heroEl = document.getElementById('movie-hero');
+  if (heroEl) {
+    heroEl.style.cssText = '';
+    heroEl.innerHTML = `
+      <div style="position:absolute;inset:0;background:url('${escAttr(coverImg)}') center/cover;filter:blur(30px) brightness(0.3);z-index:0"></div>
+      <img class="movie-poster" src="${escAttr(coverImg)}" alt="" onerror="this.style.display='none'" />
+      <div class="movie-meta">
+        <h2>${escHtml(decodeHtml(albumName))}</h2>
+        <p>${year ? year + ' · ' : ''}${songs.length} songs · ${durMin} min · ${langLabel}</p>
+        <p style="font-size:0.78rem;margin-top:0.2rem;opacity:0.7">${escHtml(artists)}</p>
+      </div>`;
+  }
+
+  // Render actions
+  const actionsEl = document.getElementById('movie-actions');
+  if (actionsEl) {
+    actionsEl.innerHTML = `
+      <button class="movie-play-btn" onclick="playMovieCollection('${escAttr(albumName)}','${escAttr(lang)}',false)">▶ Play All</button>
+      <button class="movie-shuffle-btn" onclick="playMovieCollection('${escAttr(albumName)}','${escAttr(lang)}',true)">🔀 Shuffle</button>`;
+  }
+
+  // Render songs list
+  const listEl = document.getElementById('movie-songs-list');
+  if (listEl) {
+    listEl.innerHTML = songs.map((s, i) => {
+      const dur = s.duration ? fmtTime(s.duration) : '';
+      return `<div class="movie-song-item" onclick="playMovieSong('${escAttr(albumName)}','${escAttr(lang)}',${i})">
+        <span class="movie-song-num">${i + 1}</span>
+        <div class="movie-song-info">
+          <h4>${escHtml(decodeHtml(s.name))}</h4>
+          <p>${escHtml(decodeHtml(s.artists || ''))}</p>
+        </div>
+        <span class="movie-song-dur">${dur}</span>
+      </div>`;
+    }).join('');
+  }
+
+  showPage('movie');
+}
+
+function playMovieCollection(albumName, lang, shuffle) {
+  const source = lang === 'hindi'
+    ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+    : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+  const albumNorm = normalizeForMatch(decodeHtml(albumName));
   const songs = source.filter(s => normalizeForMatch(decodeHtml(s.album || '')) === albumNorm);
   if (!songs.length) return;
-  // Play as a collection
-  songs.sort((a, b) => parseInt(a.year || 0) - parseInt(b.year || 0));
-  activeCollectionPool = { songs, index: 0 };
+  if (shuffle) _shuffleArray(songs);
+  activeCollectionPool = { songs: songs.slice(), index: 0 };
+  bollywoodCategoryPool = null;
   history.push(songs[0]);
   historyIndex = history.length - 1;
   playSong(songs[0]);
+  showPage('player');
+}
+
+function playMovieSong(albumName, lang, index) {
+  const source = lang === 'hindi'
+    ? ((typeof BollywoodSongsDB !== 'undefined') ? BollywoodSongsDB.SONGS_DB : [])
+    : ((typeof SongsDB !== 'undefined') ? SongsDB.SONGS_DB : []);
+  const albumNorm = normalizeForMatch(decodeHtml(albumName));
+  const songs = source.filter(s => normalizeForMatch(decodeHtml(s.album || '')) === albumNorm);
+  if (!songs.length) return;
+  songs.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  activeCollectionPool = { songs: songs.slice(), index };
+  bollywoodCategoryPool = null;
+  const song = songs[index] || songs[0];
+  history.push(song);
+  historyIndex = history.length - 1;
+  playSong(song);
   showPage('player');
 }
 
