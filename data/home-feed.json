@@ -1,17 +1,72 @@
 {
-  "generatedAt": "2026-03-24T04:28:17.857Z",
+  "generatedAt": "2026-03-25T04:29:33.234Z",
   "source": "https://jiosaavn-api-privatecvc2.vercel.app",
-  "seed": 82,
+  "seed": 83,
   "songs": [
     {
-      "id": "0sOW_7Bj",
+      "id": "6WbgAlYl",
+      "name": "Dhurandhar The Revenge - Aari Aari (From \"Dhurandhar The Revenge\")",
+      "artists": "Irshad Kamil, Bombay Rockers, Shashwat Sachdev, Khan Saab",
+      "album": "Dhurandhar The Revenge - Aari Aari (From \"Dhurandhar The Revenge\")",
+      "year": "2026",
+      "duration": 210,
+      "audio": "https://aac.saavncdn.com/905/f968ceef36dde517a2aee1b74e119166_320.mp4",
+      "image": "https://c.saavncdn.com/905/Dhurandhar-The-Revenge-Aari-Aari-From-Dhurandhar-The-Revenge-Hindi-2026-20260312141004-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "dq6oL2dA",
       "name": "Dhurandhar The Revenge - Aari Aari",
       "artists": "Shashwat Sachdev, Bombay Rockers, Irshad Kamil, Khan Saab, Reble, Token, Jasmine Sandlas, Sudhir Yaduvanshi",
       "album": "Dhurandhar The Revenge",
       "year": "2026",
       "duration": 210,
-      "audio": "https://aac.saavncdn.com/900/2c892cb95c257e13a20971a7213e03ab_320.mp4",
-      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260319141026-500x500.jpg",
+      "audio": "https://aac.saavncdn.com/581/08c9f7f3b0d8f726bb5d586e87501559_320.mp4",
+      "image": "https://c.saavncdn.com/581/Dhurandhar-The-Revenge-Hindi-2026-20260324162314-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "TCu0tFIp",
+      "name": "Jaiye Sajana",
+      "artists": "Shashwat Sachdev, Jasmine Sandlas, Satinder Sartaaj",
+      "album": "Dhurandhar The Revenge",
+      "year": "2026",
+      "duration": 180,
+      "audio": "https://aac.saavncdn.com/581/fa85a58f3ca07edde450578b6539d762_320.mp4",
+      "image": "https://c.saavncdn.com/581/Dhurandhar-The-Revenge-Hindi-2026-20260324162314-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "zgPp6L5K",
+      "name": "Jaan Se Guzarte Hain",
+      "artists": "Shashwat Sachdev, Khan Saab",
+      "album": "Dhurandhar The Revenge",
+      "year": "2026",
+      "duration": 332,
+      "audio": "https://aac.saavncdn.com/900/842ac6da0651a7463c155a3493a7461c_320.mp4",
+      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260324162353-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "HFIok7C3",
+      "name": "Apna Bana Le",
+      "artists": "Amitabh Bhattacharya, Sachin-Jigar, Arijit Singh",
+      "album": "Wedding Love Songs",
+      "year": "2026",
+      "duration": 261,
+      "audio": "https://aac.saavncdn.com/809/8a839d9200a725bce0b68eeae46409cf_320.mp4",
+      "image": "https://c.saavncdn.com/809/Wedding-Love-Songs-Hindi-2026-20251230172703-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "u4T9sYPy",
+      "name": "Jaan Se Guzarte Hain",
+      "artists": "Shashwat Sachdev, Khan Saab",
+      "album": "Dhurandhar The Revenge",
+      "year": "2026",
+      "duration": 332,
+      "audio": "https://aac.saavncdn.com/581/5aea1a1eff61a7747624e827e2a73816_320.mp4",
+      "image": "https://c.saavncdn.com/581/Dhurandhar-The-Revenge-Hindi-2026-20260324162314-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -26,17 +81,6 @@
       "language": "hindi"
     },
     {
-      "id": "6WbgAlYl",
-      "name": "Dhurandhar The Revenge - Aari Aari (From \"Dhurandhar The Revenge\")",
-      "artists": "Irshad Kamil, Bombay Rockers, Shashwat Sachdev, Khan Saab",
-      "album": "Dhurandhar The Revenge - Aari Aari (From \"Dhurandhar The Revenge\")",
-      "year": "2026",
-      "duration": 210,
-      "audio": "https://aac.saavncdn.com/905/f968ceef36dde517a2aee1b74e119166_320.mp4",
-      "image": "https://c.saavncdn.com/905/Dhurandhar-The-Revenge-Aari-Aari-From-Dhurandhar-The-Revenge-Hindi-2026-20260312141004-500x500.jpg",
-      "language": "hindi"
-    },
-    {
       "id": "cOTfVYmU",
       "name": "Saiyaara Reprise - Female (From \"Saiyaara\")",
       "artists": "Tanishk Bagchi, Faheem Abdullah, Arslan Nizami, Shreya Ghoshal, Irshad Kamil",
@@ -48,14 +92,25 @@
       "language": "hindi"
     },
     {
-      "id": "_LuRVpwJ",
-      "name": "Jaiye Sajana",
-      "artists": "Shashwat Sachdev, Jasmine Sandlas, Satinder Sartaaj",
+      "id": "pO_hKTKW",
+      "name": "Main Aur Tu",
+      "artists": "Shashwat Sachdev, Jasmine Sandlas, Reble",
       "album": "Dhurandhar The Revenge",
       "year": "2026",
-      "duration": 179,
-      "audio": "https://aac.saavncdn.com/900/a3aed93c7b16feb309fafb8a24535ff4_320.mp4",
-      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260319141026-500x500.jpg",
+      "duration": 210,
+      "audio": "https://aac.saavncdn.com/900/6e2c15694f160ba2445218f6fc9561ce_320.mp4",
+      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260324162353-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "Hb9wBVGg",
+      "name": "Main Aur Tu (From \"Dhurandhar The Revenge\")",
+      "artists": "Shashwat Sachdev, Jasmine Sandlas, Reble",
+      "album": "Main Aur Tu (From \"Dhurandhar The Revenge\")",
+      "year": "2026",
+      "duration": 210,
+      "audio": "https://aac.saavncdn.com/369/e14e181b4e10e45e9876210672b8c52e_320.mp4",
+      "image": "https://c.saavncdn.com/369/Main-Aur-Tu-From-Dhurandhar-The-Revenge-Hindi-2026-20260317161012-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -70,36 +125,14 @@
       "language": "hindi"
     },
     {
-      "id": "zgPp6L5K",
-      "name": "Jaan Se Guzarte Hain",
-      "artists": "Shashwat Sachdev, Khan Saab",
-      "album": "Dhurandhar The Revenge",
-      "year": "2026",
-      "duration": 331,
-      "audio": "https://aac.saavncdn.com/900/458349f2b821456f89d74b60ca3bb127_320.mp4",
-      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260319141026-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "pO_hKTKW",
+      "id": "kltZsTYC",
       "name": "Main Aur Tu",
       "artists": "Shashwat Sachdev, Jasmine Sandlas, Reble",
       "album": "Dhurandhar The Revenge",
       "year": "2026",
       "duration": 210,
-      "audio": "https://aac.saavncdn.com/900/cd1b23895d645baae067780548da3b79_320.mp4",
-      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260319141026-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "Hb9wBVGg",
-      "name": "Main Aur Tu (From \"Dhurandhar The Revenge\")",
-      "artists": "Shashwat Sachdev, Jasmine Sandlas, Reble",
-      "album": "Main Aur Tu (From \"Dhurandhar The Revenge\")",
-      "year": "2026",
-      "duration": 210,
-      "audio": "https://aac.saavncdn.com/369/e14e181b4e10e45e9876210672b8c52e_320.mp4",
-      "image": "https://c.saavncdn.com/369/Main-Aur-Tu-From-Dhurandhar-The-Revenge-Hindi-2026-20260317161012-500x500.jpg",
+      "audio": "https://aac.saavncdn.com/581/e0539872c34a6b511b6dbe0ca081b536_320.mp4",
+      "image": "https://c.saavncdn.com/581/Dhurandhar-The-Revenge-Hindi-2026-20260324162314-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -120,8 +153,19 @@
       "album": "Dhurandhar The Revenge",
       "year": "2026",
       "duration": 226,
-      "audio": "https://aac.saavncdn.com/900/77bf8f5befef41268bef472ce6859cd5_320.mp4",
-      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260319141026-500x500.jpg",
+      "audio": "https://aac.saavncdn.com/900/375774458ba9162b72cbafd1a383e797_320.mp4",
+      "image": "https://c.saavncdn.com/900/Dhurandhar-The-Revenge-Hindi-2026-20260324162353-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "3NgzEJqd",
+      "name": "Destiny - Mann Atkeya",
+      "artists": "Shashwat Sachdev, Token, Vaibhav Gupta, Shahzad Ali, Traditional",
+      "album": "Dhurandhar The Revenge",
+      "year": "2026",
+      "duration": 226,
+      "audio": "https://aac.saavncdn.com/581/bababd144c661137fd5664ad3bf4c24f_320.mp4",
+      "image": "https://c.saavncdn.com/581/Dhurandhar-The-Revenge-Hindi-2026-20260324162314-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -136,25 +180,25 @@
       "language": "hindi"
     },
     {
-      "id": "GC6HBHb8",
-      "name": "Dil Lagana Mana Tha",
-      "artists": "Krish Mondal, Kishore Mondal, Devv Sadaana, Kunaal Vermaa",
-      "album": "Dil Lagana Mana Tha",
+      "id": "rnY6_16K",
+      "name": "Tum Ho Toh (From \"Saiyaara\")",
+      "artists": "Vishal Mishra, Hansika Pareek, Raj Shekhar",
+      "album": "Pyaar, Forever and Ever",
       "year": "2026",
-      "duration": 198,
-      "audio": "https://aac.saavncdn.com/661/5a9a92b98d9d7fd87e72d9e94b12c5e4_320.mp4",
-      "image": "https://c.saavncdn.com/661/Dil-Lagana-Mana-Tha-Hindi-2026-20260114085211-500x500.jpg",
+      "duration": 318,
+      "audio": "https://aac.saavncdn.com/347/c2095e11b1af20c834087797c012f746_320.mp4",
+      "image": "https://c.saavncdn.com/347/Pyaar-Forever-and-Ever-Hindi-2026-20260205082719-500x500.jpg",
       "language": "hindi"
     },
     {
       "id": "SxoZvReX",
       "name": "Phir Se (From \"Dhurandhar The Revenge\")",
-      "artists": "Shashwat Sachdev, Arijit Singh, Irshad Kamil",
+      "artists": "Irshad Kamil, Shashwat Sachdev, Arijit Singh",
       "album": "Phir Se (From \"Dhurandhar The Revenge\")",
       "year": "2026",
-      "duration": 353,
-      "audio": "https://aac.saavncdn.com/659/36c8a965aaea6f57c044af3f5519e41b_320.mp4",
-      "image": "https://c.saavncdn.com/659/Phir-Se-From-Dhurandhar-The-Revenge-Hindi-2026-20260319161019-500x500.jpg",
+      "duration": 354,
+      "audio": "https://aac.saavncdn.com/659/a64233bcbee8f1746d8de667692ae3fe_320.mp4",
+      "image": "https://c.saavncdn.com/659/Phir-Se-From-Dhurandhar-The-Revenge-Hindi-2026-20260324162405-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -169,25 +213,14 @@
       "language": "hindi"
     },
     {
-      "id": "rnY6_16K",
-      "name": "Tum Ho Toh (From \"Saiyaara\")",
-      "artists": "Vishal Mishra, Hansika Pareek, Raj Shekhar",
-      "album": "Pyaar, Forever and Ever",
+      "id": "GC6HBHb8",
+      "name": "Dil Lagana Mana Tha",
+      "artists": "Krish Mondal, Kishore Mondal, Devv Sadaana, Kunaal Vermaa",
+      "album": "Dil Lagana Mana Tha",
       "year": "2026",
-      "duration": 318,
-      "audio": "https://aac.saavncdn.com/347/c2095e11b1af20c834087797c012f746_320.mp4",
-      "image": "https://c.saavncdn.com/347/Pyaar-Forever-and-Ever-Hindi-2026-20260205082719-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "J94IV72D",
-      "name": "Namo Namo",
-      "artists": "Amit Trivedi",
-      "album": "Mahashivratri Special 2026",
-      "year": "2026",
-      "duration": 322,
-      "audio": "https://aac.saavncdn.com/438/3026d31d3ec3ed2d9b3f40226aa943d8_320.mp4",
-      "image": "https://c.saavncdn.com/438/Mahashivratri-Special-2026-Hindi-2026-20260202215517-500x500.jpg",
+      "duration": 198,
+      "audio": "https://aac.saavncdn.com/661/5a9a92b98d9d7fd87e72d9e94b12c5e4_320.mp4",
+      "image": "https://c.saavncdn.com/661/Dil-Lagana-Mana-Tha-Hindi-2026-20260114085211-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -199,17 +232,6 @@
       "duration": 208,
       "audio": "https://aac.saavncdn.com/642/83178b52b59f64c825b68a52e3f46133_320.mp4",
       "image": "https://c.saavncdn.com/642/Hum-Pyaar-Karne-Wale-From-Dhurandhar-The-Revenge-Hindi-2026-20260319161014-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "HjlW6wyL",
-      "name": "Aakhri Ishq (From \"Dhurandhar The Revenge\")",
-      "artists": "Shashwat Sachdev, Jubin Nautiyal, Irshad Kamil",
-      "album": "Aakhri Ishq (From \"Dhurandhar The Revenge\")",
-      "year": "2026",
-      "duration": 261,
-      "audio": "https://aac.saavncdn.com/635/9b0c988b2c87f130fee3b6e140b8fde0_320.mp4",
-      "image": "https://c.saavncdn.com/635/Aakhri-Ishq-From-Dhurandhar-The-Revenge-Hindi-2026-20260319161008-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -232,17 +254,6 @@
       "duration": 405,
       "audio": "https://aac.saavncdn.com/059/d0e46803641546b0963dc189a5ddbb6b_320.mp4",
       "image": "https://c.saavncdn.com/059/Republic-Day-Special-Songs-Hindi-2026-20260120181038-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "ep78oThm",
-      "name": "Thoda Thoda Pyaar",
-      "artists": "Kumaar, Stebin Ben, Nilesh Ahuja",
-      "album": "Valentines Special",
-      "year": "2026",
-      "duration": 244,
-      "audio": "https://aac.saavncdn.com/905/7b9d597eaed4a824b18eceb68e956e6a_320.mp4",
-      "image": "https://c.saavncdn.com/905/Valentines-Special-Hindi-2026-20260122144848-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -279,47 +290,36 @@
       "language": "hindi"
     },
     {
-      "id": "G4TmIz-p",
-      "name": "Ishq",
-      "artists": "Amir Ameer, Faheem Abdullah, Rauhan Malik",
-      "album": "Golden Hour: Eid Edition",
+      "id": "J94IV72D",
+      "name": "Namo Namo",
+      "artists": "Amit Trivedi",
+      "album": "Mahashivratri Special 2026",
       "year": "2026",
-      "duration": 228,
-      "audio": "https://aac.saavncdn.com/313/1636fcc47c8f483597a295b4a65b18cf_320.mp4",
-      "image": "https://c.saavncdn.com/313/Golden-Hour-Eid-Edition-Hindi-2026-20260319033004-500x500.jpg",
+      "duration": 322,
+      "audio": "https://aac.saavncdn.com/438/3026d31d3ec3ed2d9b3f40226aa943d8_320.mp4",
+      "image": "https://c.saavncdn.com/438/Mahashivratri-Special-2026-Hindi-2026-20260202215517-500x500.jpg",
       "language": "hindi"
     },
     {
-      "id": "XBB7TAwU",
-      "name": "Alakh Niranjan",
-      "artists": "Aditya",
-      "album": "Alakh Niranjan",
-      "year": "2026",
-      "duration": 239,
-      "audio": "https://aac.saavncdn.com/201/787c64896206067acd061ff7e72a6374_320.mp4",
-      "image": "https://c.saavncdn.com/201/Alakh-Niranjan-Hindi-2026-20251228191401-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "UCaiFj7O",
-      "name": "Krishnaya Vasudevaya - Shri Krishna Mantra",
-      "artists": "Siddharth Amit Bhavsar, Prateeksha Srivastava",
-      "album": "Holi Vishesh Bhajan - Radha Krishna Ki Holi",
-      "year": "2026",
-      "duration": 281,
-      "audio": "https://aac.saavncdn.com/285/e65ef071e56919a71133e796d47e8579_320.mp4",
-      "image": "https://c.saavncdn.com/285/Holi-Vishesh-Bhajan-Radha-Krishna-Ki-Holi-Hindi-2026-20260227120900-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "HFIok7C3",
-      "name": "Apna Bana Le",
-      "artists": "Amitabh Bhattacharya, Sachin-Jigar, Arijit Singh",
-      "album": "Wedding Love Songs",
+      "id": "HjlW6wyL",
+      "name": "Aakhri Ishq (From \"Dhurandhar The Revenge\")",
+      "artists": "Shashwat Sachdev, Jubin Nautiyal, Irshad Kamil",
+      "album": "Aakhri Ishq (From \"Dhurandhar The Revenge\")",
       "year": "2026",
       "duration": 261,
-      "audio": "https://aac.saavncdn.com/809/8a839d9200a725bce0b68eeae46409cf_320.mp4",
-      "image": "https://c.saavncdn.com/809/Wedding-Love-Songs-Hindi-2026-20251230172703-500x500.jpg",
+      "audio": "https://aac.saavncdn.com/635/9b0c988b2c87f130fee3b6e140b8fde0_320.mp4",
+      "image": "https://c.saavncdn.com/635/Aakhri-Ishq-From-Dhurandhar-The-Revenge-Hindi-2026-20260319161008-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "ep78oThm",
+      "name": "Thoda Thoda Pyaar",
+      "artists": "Kumaar, Stebin Ben, Nilesh Ahuja",
+      "album": "Valentines Special",
+      "year": "2026",
+      "duration": 244,
+      "audio": "https://aac.saavncdn.com/905/7b9d597eaed4a824b18eceb68e956e6a_320.mp4",
+      "image": "https://c.saavncdn.com/905/Valentines-Special-Hindi-2026-20260122144848-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -342,17 +342,6 @@
       "duration": 634,
       "audio": "https://aac.saavncdn.com/795/7c573f6f77b9c8a1eeedb6395e9a1db8_320.mp4",
       "image": "https://c.saavncdn.com/795/BORDER-2-Original-Motion-Picture-Soundtrack-Hindi-2026-20260119121003-500x500.jpg",
-      "language": "hindi"
-    },
-    {
-      "id": "4LPjmU5w",
-      "name": "Main Yahaan Hoon (From \"Veer - Zaara\")",
-      "artists": "Madan Mohan, Udit Narayan, Javed Akhtar",
-      "album": "Pyaar, Forever and Ever",
-      "year": "2026",
-      "duration": 295,
-      "audio": "https://aac.saavncdn.com/347/881eac35ce094dc1c4840e57f700a7bb_320.mp4",
-      "image": "https://c.saavncdn.com/347/Pyaar-Forever-and-Ever-Hindi-2026-20260205082719-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -422,6 +411,17 @@
       "language": "hindi"
     },
     {
+      "id": "qVIa1hba",
+      "name": "50. खोया हुआ दोस्त",
+      "artists": "Apurva Krishna",
+      "album": "Real Horror Story",
+      "year": "2025",
+      "duration": 174,
+      "audio": "https://aac.saavncdn.com/272/95cdf63dd11504119617751581fb62b3_320.mp4",
+      "image": "https://c.saavncdn.com/272/Real-Horror-Story-Hindi-2025-20250708090157-500x500.jpg",
+      "language": "hindi"
+    },
+    {
       "id": "Bt07_OpM",
       "name": "Tum Hi Ho (From \"Aashiqui 2\")",
       "artists": "Arijit Singh, Mithoon",
@@ -444,17 +444,6 @@
       "language": "hindi"
     },
     {
-      "id": "1gHtmQ3x",
-      "name": "Gehra Hua",
-      "artists": "Irshad Kamil, Arijit Singh, Shashwat Sachdev, Armaan Khan",
-      "album": "Dhurandhar",
-      "year": "2025",
-      "duration": 362,
-      "audio": "https://aac.saavncdn.com/475/04cc3b6ccd915df473947d932f094545_320.mp4",
-      "image": "https://c.saavncdn.com/475/Dhurandhar-Hindi-2025-20260203083204-500x500.jpg",
-      "language": "hindi"
-    },
-    {
       "id": "a5SkodXN",
       "name": "Nashe Si Chadh Gayi (From \"Befikre\")",
       "artists": "Vishal & Shekhar, Arijit Singh, Caralisa Monteiro, Jaideep Sahni",
@@ -463,6 +452,17 @@
       "duration": 237,
       "audio": "https://aac.saavncdn.com/798/592816e79cfa0adf2534a1311d2acea2_320.mp4",
       "image": "https://c.saavncdn.com/798/YRF-Top-20-Dance-Chartbusters-Hindi-2025-20250417080526-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "1gHtmQ3x",
+      "name": "Gehra Hua",
+      "artists": "Irshad Kamil, Arijit Singh, Shashwat Sachdev, Armaan Khan",
+      "album": "Dhurandhar",
+      "year": "2025",
+      "duration": 362,
+      "audio": "https://aac.saavncdn.com/475/04cc3b6ccd915df473947d932f094545_320.mp4",
+      "image": "https://c.saavncdn.com/475/Dhurandhar-Hindi-2025-20260203083204-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -661,6 +661,17 @@
       "duration": 194,
       "audio": "https://aac.saavncdn.com/405/9a791d1f4d6dd5dccbc0c6c519b04d71_320.mp4",
       "image": "https://c.saavncdn.com/405/Oh-Mama-TETEMA-Hindi-2025-20250908181014-500x500.jpg",
+      "language": "hindi"
+    },
+    {
+      "id": "qmT9ttk9",
+      "name": "Salaam Aaya",
+      "artists": "Sajid Wajid, Roopkumar Rathod, Shreya Ghoshal, Suzanne D'Mello",
+      "album": "Veer",
+      "year": "2025",
+      "duration": 289,
+      "audio": "https://aac.saavncdn.com/297/9087885f6582755550f2646a36c02a4b_320.mp4",
+      "image": "https://c.saavncdn.com/297/Veer-Hindi-2025-20260120201151-500x500.jpg",
       "language": "hindi"
     },
     {
@@ -1236,17 +1247,6 @@
       "language": "hindi"
     },
     {
-      "id": "DHIdp0A_",
-      "name": "Balma",
-      "artists": "Shriram, Shreya Ghoshal",
-      "album": "Khiladi 786",
-      "year": "2012",
-      "duration": 227,
-      "audio": "https://aac.saavncdn.com/485/26385add4a6e4ce3663f8ba1dd70bc42_320.mp4",
-      "image": "https://c.saavncdn.com/485/Khiladi-786-Hindi-2012-20221213035019-500x500.jpg",
-      "language": "hindi"
-    },
-    {
       "id": "0rYr57cr",
       "name": "Saathiyaa",
       "artists": "Shreya Ghoshal, Ajay Gogavale, Ajay-Atul",
@@ -1533,17 +1533,6 @@
       "language": "hindi"
     },
     {
-      "id": "oemj5iht",
-      "name": "Chikiri Chikiri (From \"Peddi\")",
-      "artists": "Mohit Chauhan, A.R. Rahman, Balaji",
-      "album": "A.R. Rahman Tollywood Superhits",
-      "year": "2026",
-      "duration": 273,
-      "audio": "https://aac.saavncdn.com/129/971e0f2186465e4a25d6a1eafdecb746_320.mp4",
-      "image": "https://c.saavncdn.com/129/A-R-Rahman-Tollywood-Superhits-Telugu-2026-20260106191102-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "i-4OQoee",
       "name": "Aaya Sher (From \"The Paradise\") (Telugu)",
       "artists": "Kasarla Shyam, Anirudh Ravichander, Jangi Reddy, Arjun Chandy",
@@ -1555,17 +1544,6 @@
       "language": "telugu"
     },
     {
-      "id": "NmXwIEDt",
-      "name": "Chikiri Chikiri (From \"Peddi\")",
-      "artists": "Mohit Chauhan, A.R. Rahman, Balaji",
-      "album": "Prema Kavithalu - 2026 Valentines Day Special",
-      "year": "2026",
-      "duration": 273,
-      "audio": "https://aac.saavncdn.com/353/f9f2f587940e7c446f5a2269c9a094e6_320.mp4",
-      "image": "https://c.saavncdn.com/353/Prema-Kavithalu-2026-Valentines-Day-Special-Telugu-2026-20260212201005-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "i77wYuF6",
       "name": "Sahana Sahana (From \"The Rajasaab\")",
       "artists": "Vishal Mishra, Thaman S, Sruthi Ranjani, Krishna Kanth",
@@ -1573,6 +1551,17 @@
       "year": "2026",
       "duration": 263,
       "audio": "https://aac.saavncdn.com/353/5d78abc48a7ccb2a62be41547b523ac7_320.mp4",
+      "image": "https://c.saavncdn.com/353/Prema-Kavithalu-2026-Valentines-Day-Special-Telugu-2026-20260212201005-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "NmXwIEDt",
+      "name": "Chikiri Chikiri (From \"Peddi\")",
+      "artists": "Mohit Chauhan, A.R. Rahman, Balaji",
+      "album": "Prema Kavithalu - 2026 Valentines Day Special",
+      "year": "2026",
+      "duration": 273,
+      "audio": "https://aac.saavncdn.com/353/f9f2f587940e7c446f5a2269c9a094e6_320.mp4",
       "image": "https://c.saavncdn.com/353/Prema-Kavithalu-2026-Valentines-Day-Special-Telugu-2026-20260212201005-500x500.jpg",
       "language": "telugu"
     },
@@ -1610,17 +1599,6 @@
       "language": "telugu"
     },
     {
-      "id": "ic76YbfK",
-      "name": "Sasirekha (From \"Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru\")",
-      "artists": "Bheems Ceciroleo, Madhupriya, Anantha Sriram",
-      "album": "2026 - Tollywood - The Valentine Special",
-      "year": "2026",
-      "duration": 241,
-      "audio": "https://aac.saavncdn.com/223/08de6e75260198bccf9cfe1f4a574b68_320.mp4",
-      "image": "https://c.saavncdn.com/223/2026-Tollywood-The-Valentine-Special-Telugu-2026-20260207191005-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "vkeWVESW",
       "name": "Hook Step (From \"Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru\")",
       "artists": "Baba Sehgal, Bheems Ceciroleo, Ramajogayya Sastry",
@@ -1629,6 +1607,17 @@
       "duration": 138,
       "audio": "https://aac.saavncdn.com/162/904dc4396232763478c1e11ae566155f_320.mp4",
       "image": "https://c.saavncdn.com/162/Tollywood-Electrifying-Super-Hits-Telugu-2026-20260206171019-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "ic76YbfK",
+      "name": "Sasirekha (From \"Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru\")",
+      "artists": "Bheems Ceciroleo, Madhupriya, Anantha Sriram",
+      "album": "2026 - Tollywood - The Valentine Special",
+      "year": "2026",
+      "duration": 241,
+      "audio": "https://aac.saavncdn.com/223/08de6e75260198bccf9cfe1f4a574b68_320.mp4",
+      "image": "https://c.saavncdn.com/223/2026-Tollywood-The-Valentine-Special-Telugu-2026-20260207191005-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1698,17 +1687,6 @@
       "language": "telugu"
     },
     {
-      "id": "NddA-EA3",
-      "name": "Meesaala Pilla (From \"Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru\")",
-      "artists": "Udit Narayan, Shweta Mohan, Bheems Ceciroleo, Bhaskarabhatla",
-      "album": "Prema Kavithalu - 2026 Valentines Day Special",
-      "year": "2026",
-      "duration": 227,
-      "audio": "https://aac.saavncdn.com/353/6b1b52a7dfa875bf0b836747b216461c_320.mp4",
-      "image": "https://c.saavncdn.com/353/Prema-Kavithalu-2026-Valentines-Day-Special-Telugu-2026-20260212201005-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "7NIyhy3z",
       "name": "Collar Ey Etthara",
       "artists": "Devi Sri Prasad, Ram Miriyala, Kasarla Shyam",
@@ -1720,14 +1698,14 @@
       "language": "telugu"
     },
     {
-      "id": "OXfrepgP",
-      "name": "Hook Step (From \"Mana ShankaraVaraPrasad Garu - Pandagaki Vasthunnaru\")",
-      "artists": "Bheems Ceciroleo, Baba Sehgal, Ramajogayya Sastry",
-      "album": "Hook Step (From \"Mana ShankaraVaraPrasad Garu - Pandagaki Vasthunnaru\")",
+      "id": "NddA-EA3",
+      "name": "Meesaala Pilla (From \"Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru\")",
+      "artists": "Udit Narayan, Shweta Mohan, Bheems Ceciroleo, Bhaskarabhatla",
+      "album": "Prema Kavithalu - 2026 Valentines Day Special",
       "year": "2026",
-      "duration": 138,
-      "audio": "https://aac.saavncdn.com/150/424c7fef1f16496510864f9cc372952d_320.mp4",
-      "image": "https://c.saavncdn.com/150/Hook-Step-From-Mana-ShankaraVaraPrasad-Garu-Pandagaki-Vasthunnaru-Telugu-2026-20260107181040-500x500.jpg",
+      "duration": 227,
+      "audio": "https://aac.saavncdn.com/353/6b1b52a7dfa875bf0b836747b216461c_320.mp4",
+      "image": "https://c.saavncdn.com/353/Prema-Kavithalu-2026-Valentines-Day-Special-Telugu-2026-20260212201005-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1739,6 +1717,17 @@
       "duration": 241,
       "audio": "https://aac.saavncdn.com/209/568176601dbddb20cef70203099d540b_320.mp4",
       "image": "https://c.saavncdn.com/209/Tollywood-Romantic-Songs-Telugu-2026-20260206171136-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "OXfrepgP",
+      "name": "Hook Step (From \"Mana ShankaraVaraPrasad Garu - Pandagaki Vasthunnaru\")",
+      "artists": "Bheems Ceciroleo, Baba Sehgal, Ramajogayya Sastry",
+      "album": "Hook Step (From \"Mana ShankaraVaraPrasad Garu - Pandagaki Vasthunnaru\")",
+      "year": "2026",
+      "duration": 138,
+      "audio": "https://aac.saavncdn.com/150/424c7fef1f16496510864f9cc372952d_320.mp4",
+      "image": "https://c.saavncdn.com/150/Hook-Step-From-Mana-ShankaraVaraPrasad-Garu-Pandagaki-Vasthunnaru-Telugu-2026-20260107181040-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1764,14 +1753,14 @@
       "language": "telugu"
     },
     {
-      "id": "8zMlG0_z",
-      "name": "Rubaroo (From \"Dacoit (Telugu)\")",
-      "artists": "Bheems Ceciroleo, Chinmayi, Bhaskarabhatla",
-      "album": "Rubaroo (From \"Dacoit (Telugu)\")",
+      "id": "8ByHXECV",
+      "name": "Devara Thandavam (From \"Devara Part 1\") (From \"Devara Thandavam (From \"Devara Part 1\")\")",
+      "artists": "Anirudh Ravichander",
+      "album": "Blockbuster Tollywood Ugadi",
       "year": "2026",
-      "duration": 196,
-      "audio": "https://aac.saavncdn.com/800/fc6a30ff2ab5e9b9ab2d757d6f96c7b2_320.mp4",
-      "image": "https://c.saavncdn.com/800/Rubaroo-From-Dacoit-Telugu-2026-20260226175513-500x500.jpg",
+      "duration": 138,
+      "audio": "https://aac.saavncdn.com/154/04d000690fd464db10ae217bbc97aab7_320.mp4",
+      "image": "https://c.saavncdn.com/154/Blockbuster-Tollywood-Ugadi-Telugu-2026-20260318161228-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1786,17 +1775,6 @@
       "language": "telugu"
     },
     {
-      "id": "8ByHXECV",
-      "name": "Devara Thandavam (From \"Devara Part 1\") (From \"Devara Thandavam (From \"Devara Part 1\")\")",
-      "artists": "Anirudh Ravichander",
-      "album": "Blockbuster Tollywood Ugadi",
-      "year": "2026",
-      "duration": 138,
-      "audio": "https://aac.saavncdn.com/154/04d000690fd464db10ae217bbc97aab7_320.mp4",
-      "image": "https://c.saavncdn.com/154/Blockbuster-Tollywood-Ugadi-Telugu-2026-20260318161228-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "dVhcHsW9",
       "name": "Meesaala Pilla",
       "artists": "Bheems Ceciroleo, Udit Narayan, Shweta Mohan, Bhaskarabhatla",
@@ -1805,28 +1783,6 @@
       "duration": 227,
       "audio": "https://aac.saavncdn.com/892/792d95449e0a3c71c5357d42ef7099b4_320.mp4",
       "image": "https://c.saavncdn.com/892/Mana-Shankaravaraprasad-Garu-Pandagaki-Vasthunnaru-Telugu-2026-20260109191108-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "SETu1Gik",
-      "name": "Dekhlenge Saala",
-      "artists": "Devi Sri Prasad, Vishal Dadlani, Haripriya, Bhaskarbhatla Ravikumar",
-      "album": "Ustaad Bhagat Singh",
-      "year": "2026",
-      "duration": 241,
-      "audio": "https://aac.saavncdn.com/366/0d5a6cceef9484bb04bbbe2bf5c11e8b_320.mp4",
-      "image": "https://c.saavncdn.com/366/Ustaad-Bhagat-Singh-Telugu-2026-20260312150720-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "mw7_IcOp",
-      "name": "Addira Lekka (From \"Happy Raj\") (Telugu)",
-      "artists": "Rahman, Justin Prabhakaran, Govind Prasad",
-      "album": "Addira Lekka (From \"Happy Raj\") (Telugu)",
-      "year": "2026",
-      "duration": 228,
-      "audio": "https://aac.saavncdn.com/425/3b88e9fb2ceb8afc4be8eafdabff29ab_320.mp4",
-      "image": "https://c.saavncdn.com/425/Addira-Lekka-From-Happy-Raj-Telugu-Telugu-2026-20260317163305-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1841,6 +1797,28 @@
       "language": "telugu"
     },
     {
+      "id": "SETu1Gik",
+      "name": "Dekhlenge Saala",
+      "artists": "Devi Sri Prasad, Vishal Dadlani, Haripriya, Bhaskarbhatla Ravikumar",
+      "album": "Ustaad Bhagat Singh",
+      "year": "2026",
+      "duration": 241,
+      "audio": "https://aac.saavncdn.com/366/0d5a6cceef9484bb04bbbe2bf5c11e8b_320.mp4",
+      "image": "https://c.saavncdn.com/366/Ustaad-Bhagat-Singh-Telugu-2026-20260312150720-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "8zMlG0_z",
+      "name": "Rubaroo (From \"Dacoit (Telugu)\")",
+      "artists": "Bheems Ceciroleo, Chinmayi, Bhaskarabhatla",
+      "album": "Rubaroo (From \"Dacoit (Telugu)\")",
+      "year": "2026",
+      "duration": 196,
+      "audio": "https://aac.saavncdn.com/800/fc6a30ff2ab5e9b9ab2d757d6f96c7b2_320.mp4",
+      "image": "https://c.saavncdn.com/800/Rubaroo-From-Dacoit-Telugu-2026-20260226175513-500x500.jpg",
+      "language": "telugu"
+    },
+    {
       "id": "mUOF1XAl",
       "name": "Parichayamila (From \"8 Vasantalu\")",
       "artists": "K. S. Chithra, Hesham Abdul Wahab, Vanamaali",
@@ -1852,14 +1830,14 @@
       "language": "telugu"
     },
     {
-      "id": "lrfkElyu",
-      "name": "Ekkadi Dongalu Akkade Gapchup (From \"Band Melam\")",
-      "artists": "Mangli",
-      "album": "Ekkadi Dongalu Akkade Gapchup (From \"Band Melam\")",
+      "id": "EynItatL",
+      "name": "Uyyale Uyyale (From \"Suyodhana\")",
+      "artists": "Gowtham Bharadwaj, Haripriya",
+      "album": "Uyyale Uyyale (From \"Suyodhana\")",
       "year": "2026",
-      "duration": 153,
-      "audio": "https://aac.saavncdn.com/605/ddee06d79c80a3609c9cb2bca8fc0d46_320.mp4",
-      "image": "https://c.saavncdn.com/605/Ekkadi-Dongalu-Akkade-Gapchup-From-Band-Melam-Telugu-2026-20260320112909-500x500.jpg",
+      "duration": 224,
+      "audio": "https://aac.saavncdn.com/302/1c562d8b8f7ec9ef314f2cfa76fc1ef6_320.mp4",
+      "image": "https://c.saavncdn.com/302/Uyyale-Uyyale-From-Suyodhana-Telugu-2026-20260321115610-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1870,6 +1848,17 @@
       "year": "2026",
       "duration": 249,
       "audio": "https://aac.saavncdn.com/322/dde56a1fd09cb8ea940fa3ee9d5b5703_320.mp4",
+      "image": "https://c.saavncdn.com/322/2026-Tollywood-Emosanal-Drama-Telugu-2026-20260213171003-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "jawIbT8E",
+      "name": "Kanule Kanele (From \"David\")",
+      "artists": "Anirudh, Krishna Chaitanya",
+      "album": "2026 - Tollywood Emosanal Drama",
+      "year": "2026",
+      "duration": 284,
+      "audio": "https://aac.saavncdn.com/322/28a953d52ba99d7763dcdc6e0f4e5ac4_320.mp4",
       "image": "https://c.saavncdn.com/322/2026-Tollywood-Emosanal-Drama-Telugu-2026-20260213171003-500x500.jpg",
       "language": "telugu"
     },
@@ -1885,28 +1874,6 @@
       "language": "telugu"
     },
     {
-      "id": "wFEDVOa8",
-      "name": "Sasirekha",
-      "artists": "Bheems Ceciroleo, Madhupriya, Anantha Sriram",
-      "album": "Mana Shankaravaraprasad Garu - Pandagaki Vasthunnaru",
-      "year": "2026",
-      "duration": 241,
-      "audio": "https://aac.saavncdn.com/892/10946821089d9518499c6b09382b36e7_320.mp4",
-      "image": "https://c.saavncdn.com/892/Mana-Shankaravaraprasad-Garu-Pandagaki-Vasthunnaru-Telugu-2026-20260109191108-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "1jtV5xZv",
-      "name": "Daavudi (From \"Devara Part 1\")",
-      "artists": "Nakash Aziz, Akasa, Anirudh Ravichander, Ramajogayya Sastry",
-      "album": "Tollywood Romantic Songs",
-      "year": "2026",
-      "duration": 229,
-      "audio": "https://aac.saavncdn.com/209/d5c3615b4e636dba4c5a657b794cf23c_320.mp4",
-      "image": "https://c.saavncdn.com/209/Tollywood-Romantic-Songs-Telugu-2026-20260206171136-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "9H9n0Tgx",
       "name": "Gango Renuka Thalli (From \"Pushpa 2 The Rule\")",
       "artists": "Mahalingam, Devi Sri Prasad, Chandrabose",
@@ -1915,17 +1882,6 @@
       "duration": 208,
       "audio": "https://aac.saavncdn.com/154/420085c50dd1aa17e15c3b499715e2d7_320.mp4",
       "image": "https://c.saavncdn.com/154/Blockbuster-Tollywood-Ugadi-Telugu-2026-20260318161228-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "tpVY5BKf",
-      "name": "Aura of Ustaad",
-      "artists": "Devi Sri Prasad, S.P. Abhishek, The Indian Choral Ensemble, Chandra Bose",
-      "album": "Ustaad Bhagat Singh",
-      "year": "2026",
-      "duration": 250,
-      "audio": "https://aac.saavncdn.com/366/32be7fea896f2d675cfe2acc432c9b1d_320.mp4",
-      "image": "https://c.saavncdn.com/366/Ustaad-Bhagat-Singh-Telugu-2026-20260312150720-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1948,6 +1904,17 @@
       "duration": 266,
       "audio": "https://aac.saavncdn.com/860/40fee8a37334c38e0e845032d75e29cf_320.mp4",
       "image": "https://c.saavncdn.com/860/Tollywood-Patriotic-Songs-2026-Telugu-2026-20260122191005-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "tpVY5BKf",
+      "name": "Aura of Ustaad",
+      "artists": "Devi Sri Prasad, S.P. Abhishek, The Indian Choral Ensemble, Chandra Bose",
+      "album": "Ustaad Bhagat Singh",
+      "year": "2026",
+      "duration": 250,
+      "audio": "https://aac.saavncdn.com/366/32be7fea896f2d675cfe2acc432c9b1d_320.mp4",
+      "image": "https://c.saavncdn.com/366/Ustaad-Bhagat-Singh-Telugu-2026-20260312150720-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -1981,17 +1948,6 @@
       "duration": 127,
       "audio": "https://aac.saavncdn.com/440/052358c423ce430cf3c2a07ca8d8cdd0_320.mp4",
       "image": "https://c.saavncdn.com/440/Needhe-Katha-Women-s-Day-Tollywood-Musical-Melody-Telugu-2026-20260307191012-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "6VEejqR0",
-      "name": "Neenaade Naa",
-      "artists": "Ghouse Peer, Thaman S, Armaan Malik, Shreya Ghoshal",
-      "album": "Southern Valentine Vibes",
-      "year": "2026",
-      "duration": 252,
-      "audio": "https://aac.saavncdn.com/725/6f253be9ae985c10f717996df77c4f35_320.mp4",
-      "image": "https://c.saavncdn.com/725/Southern-Valentine-Vibes-Tamil-2026-20260205143720-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -2072,6 +2028,17 @@
       "language": "telugu"
     },
     {
+      "id": "chQe6O8a",
+      "name": "Chinni Gundelo (From \"Andhra King Taluka\")",
+      "artists": "Krishna Kanth, Vivek-Mervin, Mervin Solomon, Satya Yamini",
+      "album": "Chinni Gundelo (From \"Andhra King Taluka\")",
+      "year": "2025",
+      "duration": 174,
+      "audio": "https://aac.saavncdn.com/168/b0af1a257f74a5e10cc2b9325e187bfd_320.mp4",
+      "image": "https://c.saavncdn.com/168/Chinni-Gundelo-From-Andhra-King-Taluka-Telugu-2025-20251031141002-500x500.jpg",
+      "language": "telugu"
+    },
+    {
       "id": "lKLdvv7n",
       "name": "Dekhlenge Saala (From \"Ustaad Bhagat Singh\")",
       "artists": "Devi Sri Prasad, Vishal Dadlani, Haripriya, Bhaskarbhatla Ravikumar",
@@ -2116,17 +2083,6 @@
       "language": "telugu"
     },
     {
-      "id": "TPjKbsmF",
-      "name": "Mallika Gandha (From \"Telusu Kada\")",
-      "artists": "Krishna Kanth, Thaman S, Sid Sriram",
-      "album": "Mallika Gandha (From \"Telusu Kada\")",
-      "year": "2025",
-      "duration": 261,
-      "audio": "https://aac.saavncdn.com/605/06df1b16df8b1c89bdf263bb670eb1dd_320.mp4",
-      "image": "https://c.saavncdn.com/605/Mallika-Gandha-From-Telusu-Kada-Telugu-2025-20250728192014-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "JQs6bedw",
       "name": "Rebel Saab (From \"The Rajasaab\") - Telugu",
       "artists": "Ramajogayya Sastry, Thaman S, Sanjith Hegde, Blaaze",
@@ -2138,14 +2094,14 @@
       "language": "telugu"
     },
     {
-      "id": "wPGsmZxU",
-      "name": "Mass Biriyani (From \"Krack\")",
-      "artists": "Rahul Nambiar, Sahithi Chaganti",
-      "album": "Thaman Rocks Again",
+      "id": "TPjKbsmF",
+      "name": "Mallika Gandha (From \"Telusu Kada\")",
+      "artists": "Krishna Kanth, Thaman S, Sid Sriram",
+      "album": "Mallika Gandha (From \"Telusu Kada\")",
       "year": "2025",
-      "duration": 238,
-      "audio": "https://aac.saavncdn.com/836/1412fd7cb7ff55317de0f19945ec8752_320.mp4",
-      "image": "https://c.saavncdn.com/836/Thaman-Rocks-Again-Telugu-2025-20251115153001-500x500.jpg",
+      "duration": 261,
+      "audio": "https://aac.saavncdn.com/605/06df1b16df8b1c89bdf263bb670eb1dd_320.mp4",
+      "image": "https://c.saavncdn.com/605/Mallika-Gandha-From-Telusu-Kada-Telugu-2025-20250728192014-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -2157,6 +2113,17 @@
       "duration": 265,
       "audio": "https://aac.saavncdn.com/409/f15da2bfd44bf6ad79fb93a3c55aef3e_320.mp4",
       "image": "https://c.saavncdn.com/409/Thaman-S-Beats-Telugu-2025-20251229143020-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "wPGsmZxU",
+      "name": "Mass Biriyani (From \"Krack\")",
+      "artists": "Rahul Nambiar, Sahithi Chaganti",
+      "album": "Thaman Rocks Again",
+      "year": "2025",
+      "duration": 238,
+      "audio": "https://aac.saavncdn.com/836/1412fd7cb7ff55317de0f19945ec8752_320.mp4",
+      "image": "https://c.saavncdn.com/836/Thaman-Rocks-Again-Telugu-2025-20251115153001-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -2270,17 +2237,6 @@
       "language": "telugu"
     },
     {
-      "id": "BHWe16yw",
-      "name": "Mass Theme Of Pushpa",
-      "artists": "Devi Sri Prasad",
-      "album": "Pushpa The Rise - OST",
-      "year": "2023",
-      "duration": 115,
-      "audio": "https://aac.saavncdn.com/000/bb83c74e8715af6a6b82c4e3d1648030_320.mp4",
-      "image": "https://c.saavncdn.com/000/Pushpa-The-Rise-OST-Telugu-2023-20230529153008-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "ARuXdxyk",
       "name": "Kurchi Madathapetti",
       "artists": "Mahesh Babu, Thaman S, Sri Krishna, Sahithi Chaganti",
@@ -2325,6 +2281,17 @@
       "language": "telugu"
     },
     {
+      "id": "B8r6a-WH",
+      "name": "Mass Entry Of Bantu",
+      "artists": "Thaman S",
+      "album": "Ala Vaikunthapurramuloo - OST",
+      "year": "2023",
+      "duration": 63,
+      "audio": "https://aac.saavncdn.com/000/595841a7bf92e6f4f17c60577113c634_320.mp4",
+      "image": "https://c.saavncdn.com/000/Ala-Vaikunthapurramuloo-OST-Telugu-2023-20230523151925-500x500.jpg",
+      "language": "telugu"
+    },
+    {
       "id": "U1A1J0bc",
       "name": "Neetho Unte Chalu - YJ Music Lofi",
       "artists": "Yj Music, Mohana Bhogaraju, Sandilya Pisapati",
@@ -2343,6 +2310,39 @@
       "year": "2023",
       "duration": 215,
       "audio": "https://aac.saavncdn.com/008/86163a558951edb4d9eef49678ab51a9_320.mp4",
+      "image": "https://c.saavncdn.com/008/Golden-Hits-Of-Keeravani-Lofi-Telugu-Telugu-2023-20230321173318-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "nIPkwdI3",
+      "name": "Rangu Rangu Rekkala - Lofi",
+      "artists": "Yj Music, M.M. Keeravani",
+      "album": "Golden Hits Of Keeravani - Lofi (Telugu)",
+      "year": "2023",
+      "duration": 194,
+      "audio": "https://aac.saavncdn.com/008/774af3784aea69cc7c118f573a83ef45_320.mp4",
+      "image": "https://c.saavncdn.com/008/Golden-Hits-Of-Keeravani-Lofi-Telugu-Telugu-2023-20230321173318-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "pwJ3zTSV",
+      "name": "Chettekki - Lofi",
+      "artists": "Yj Music, Kaala Bhairava, Shreya Ghoshal",
+      "album": "Golden Hits Of Keeravani - Lofi (Telugu)",
+      "year": "2023",
+      "duration": 195,
+      "audio": "https://aac.saavncdn.com/008/e4e2363cc9075fb522cc78797f6bb012_320.mp4",
+      "image": "https://c.saavncdn.com/008/Golden-Hits-Of-Keeravani-Lofi-Telugu-Telugu-2023-20230321173318-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "kq7xa3xI",
+      "name": "Shwaasalo - Lofi",
+      "artists": "Yj Music, Yamini Ghantasala, PVNS Rohit",
+      "album": "Golden Hits Of Keeravani - Lofi (Telugu)",
+      "year": "2023",
+      "duration": 180,
+      "audio": "https://aac.saavncdn.com/008/01c1ac49d4edd8ffad9c5d840ec348e8_320.mp4",
       "image": "https://c.saavncdn.com/008/Golden-Hits-Of-Keeravani-Lofi-Telugu-Telugu-2023-20230321173318-500x500.jpg",
       "language": "telugu"
     },
@@ -2457,6 +2457,17 @@
       "language": "telugu"
     },
     {
+      "id": "32cR3f28",
+      "name": "Jala Jala Jalapaatham Nuvvu (From \"Uppena\")",
+      "artists": "Jaspreet Jasz, Shreya Ghoshal",
+      "album": "Tollywood Chartbusters Of 2021",
+      "year": "2021",
+      "duration": 250,
+      "audio": "https://aac.saavncdn.com/620/6056a660ba739cb06fb9c9be1999fa31_320.mp4",
+      "image": "https://c.saavncdn.com/620/Tollywood-Chartbusters-Of-2021-Telugu-2021-20211228152245-500x500.jpg",
+      "language": "telugu"
+    },
+    {
       "id": "Y0ow2O8B",
       "name": "Bheemla Nayak Title Song (From \"Bheemla Nayak\")",
       "artists": "Thaman S, Sri Krishna, Prudhvi Chandra, Ram Miriyala",
@@ -2479,17 +2490,6 @@
       "language": "telugu"
     },
     {
-      "id": "nCiPAuWv",
-      "name": "Srivalli (From \"Pushpa - The Rise\")",
-      "artists": "Sid Sriram",
-      "album": "Tollywood Chartbusters Of 2021",
-      "year": "2021",
-      "duration": 221,
-      "audio": "https://aac.saavncdn.com/620/94aa955bad1a5159d86645385a58ab90_320.mp4",
-      "image": "https://c.saavncdn.com/620/Tollywood-Chartbusters-Of-2021-Telugu-2021-20211228152245-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "41kck-zP",
       "name": "Kola Kalle Ilaa (From \"Varudu Kaavalenu\")",
       "artists": "Sid Sriram",
@@ -2497,6 +2497,17 @@
       "year": "2021",
       "duration": 220,
       "audio": "https://aac.saavncdn.com/620/730567a157841148992197b5d3e4ed24_320.mp4",
+      "image": "https://c.saavncdn.com/620/Tollywood-Chartbusters-Of-2021-Telugu-2021-20211228152245-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "nCiPAuWv",
+      "name": "Srivalli (From \"Pushpa - The Rise\")",
+      "artists": "Sid Sriram",
+      "album": "Tollywood Chartbusters Of 2021",
+      "year": "2021",
+      "duration": 221,
+      "audio": "https://aac.saavncdn.com/620/94aa955bad1a5159d86645385a58ab90_320.mp4",
       "image": "https://c.saavncdn.com/620/Tollywood-Chartbusters-Of-2021-Telugu-2021-20211228152245-500x500.jpg",
       "language": "telugu"
     },
@@ -2534,17 +2545,6 @@
       "language": "telugu"
     },
     {
-      "id": "o3OcwOLA",
-      "name": "So So Ga",
-      "artists": "Sid Sriram",
-      "album": "Manchi Rojulochaie",
-      "year": "2021",
-      "duration": 207,
-      "audio": "https://aac.saavncdn.com/910/574aa0ce879eac94294e2fb99cc37809_320.mp4",
-      "image": "https://c.saavncdn.com/910/Manchi-Rojulochaie-Telugu-2021-20211101222240-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "q6uYqEq6",
       "name": "Nailu Nadi (From \"WWW\")",
       "artists": "Sid Sriram, Kalyani Nair",
@@ -2553,6 +2553,17 @@
       "duration": 246,
       "audio": "https://aac.saavncdn.com/620/853847d25b31d921c666b2557410263e_320.mp4",
       "image": "https://c.saavncdn.com/620/Tollywood-Chartbusters-Of-2021-Telugu-2021-20211228152245-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "o3OcwOLA",
+      "name": "So So Ga",
+      "artists": "Sid Sriram",
+      "album": "Manchi Rojulochaie",
+      "year": "2021",
+      "duration": 207,
+      "audio": "https://aac.saavncdn.com/910/574aa0ce879eac94294e2fb99cc37809_320.mp4",
+      "image": "https://c.saavncdn.com/910/Manchi-Rojulochaie-Telugu-2021-20211101222240-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -2655,17 +2666,6 @@
       "language": "telugu"
     },
     {
-      "id": "ydB3pQgQ",
-      "name": "Bussekki Vastavo (From \"Seethaiah\")",
-      "artists": "S. P. Balasubrahmanyam, K. S. Chithra",
-      "album": "Musical Hits Of M.M. Keeravani",
-      "year": "2019",
-      "duration": 295,
-      "audio": "https://aac.saavncdn.com/470/ca88387df6de447e74dd79d6b0065076_320.mp4",
-      "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "pZ4tsUIF",
       "name": "A Vachi B Pai (From \"Chatrapathi\")",
       "artists": "M.M. Keeravani, Mathangi",
@@ -2673,6 +2673,17 @@
       "year": "2019",
       "duration": 283,
       "audio": "https://aac.saavncdn.com/470/6e31a6f3be265680fb7f5e9b7993ead8_320.mp4",
+      "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "ydB3pQgQ",
+      "name": "Bussekki Vastavo (From \"Seethaiah\")",
+      "artists": "S. P. Balasubrahmanyam, K. S. Chithra",
+      "album": "Musical Hits Of M.M. Keeravani",
+      "year": "2019",
+      "duration": 295,
+      "audio": "https://aac.saavncdn.com/470/ca88387df6de447e74dd79d6b0065076_320.mp4",
       "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
       "language": "telugu"
     },
@@ -2699,17 +2710,6 @@
       "language": "telugu"
     },
     {
-      "id": "SJ2WCdd1",
-      "name": "Chandamama (From \"Eeabbaie Chala Manchodu\")",
-      "artists": "Kalyan Mallik, Sunitha Upadrasta",
-      "album": "Musical Hits Of M.M. Keeravani",
-      "year": "2019",
-      "duration": 278,
-      "audio": "https://aac.saavncdn.com/470/1acc3fb5bc9db4ffe699901690e07b12_320.mp4",
-      "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
-      "language": "telugu"
-    },
-    {
       "id": "VmaF9eGe",
       "name": "Nuvvu Vijilesthey (From \"Simhadri\")",
       "artists": "Tippu, K. S. Chithra",
@@ -2717,6 +2717,17 @@
       "year": "2019",
       "duration": 274,
       "audio": "https://aac.saavncdn.com/470/194199e739d67a2ee6567f296b54d717_320.mp4",
+      "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
+      "language": "telugu"
+    },
+    {
+      "id": "SJ2WCdd1",
+      "name": "Chandamama (From \"Eeabbaie Chala Manchodu\")",
+      "artists": "Kalyan Mallik, Sunitha Upadrasta",
+      "album": "Musical Hits Of M.M. Keeravani",
+      "year": "2019",
+      "duration": 278,
+      "audio": "https://aac.saavncdn.com/470/1acc3fb5bc9db4ffe699901690e07b12_320.mp4",
       "image": "https://c.saavncdn.com/470/Musical-Hits-Of-M-M-Keeravani-Telugu-2019-20190702210401-500x500.jpg",
       "language": "telugu"
     },
@@ -2996,6 +3007,17 @@
       "language": "telugu"
     },
     {
+      "id": "9iMMQMis",
+      "name": "Pimple Dimple",
+      "artists": "Devi Sri Prasad, Sagar, Ranina Reddy",
+      "album": "Yevadu",
+      "year": "2013",
+      "duration": 252,
+      "audio": "https://aac.saavncdn.com/565/5fea5609a4ef1063cd48848e5a670352_320.mp4",
+      "image": "https://c.saavncdn.com/565/Yevadu-2013-500x500.jpg",
+      "language": "telugu"
+    },
+    {
       "id": "giiMSaUI",
       "name": "Banthi Poola Janaki",
       "artists": "Thaman S, Daler Mehndi, Ranina Reddy",
@@ -3119,45 +3141,12 @@
     {
       "id": "EfEnZHdw",
       "name": "Samagana Keeravani Misrach",
-      "artists": "Udit Narayan, K. S. Chithra",
+      "artists": "Hariharan, K. S. Chithra",
       "album": "Nadaswaram 2",
       "year": "2008",
       "duration": 1744,
       "audio": "https://aac.saavncdn.com/687/42d8e2a1727833d3c7bc9757fd575d6e_320.mp4",
       "image": "https://c.saavncdn.com/687/Nadaswaram-2-Telugu-2008-20210614185440-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "kV14Tgbf",
-      "name": "Kaligi Yunte - Keeravani",
-      "artists": "Nithyashree Mahadevan",
-      "album": "December Season 2006 - Nithyashree Mahadevan",
-      "year": "2007",
-      "duration": 1582,
-      "audio": "https://aac.saavncdn.com/520/079ea73b28ef3534175a0ead97dfa280_320.mp4",
-      "image": "https://c.saavncdn.com/520/December-Season-2006-Nithyashree-Mahadevan-Telugu-2007-20260204164418-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "l52JGWt0",
-      "name": "Kiravani - Ragam  - Keeravani",
-      "artists": "Nithyashree Mahadevan",
-      "album": "December Season 2006 - Nithyashree Mahadevan",
-      "year": "2007",
-      "duration": 1426,
-      "audio": "https://aac.saavncdn.com/520/a8fcd25833174fbe56c2fe87df929847_320.mp4",
-      "image": "https://c.saavncdn.com/520/December-Season-2006-Nithyashree-Mahadevan-Telugu-2007-20260204164418-500x500.jpg",
-      "language": "telugu"
-    },
-    {
-      "id": "wtvLru-w",
-      "name": "Kaligi Yunte - Keeravani",
-      "artists": "Gayathri Venkataraghavan",
-      "album": "December Season 2006 - Gayathri Venkataraghavan",
-      "year": "2007",
-      "duration": 1806,
-      "audio": "https://aac.saavncdn.com/223/643c3c189b464cff736e485884a11aca_320.mp4",
-      "image": "https://c.saavncdn.com/223/December-Season-2006-Gayathri-Venkataraghavan-Sanskrit-2007-20260204161112-500x500.jpg",
       "language": "telugu"
     },
     {
@@ -3340,70 +3329,70 @@
   "languages": {
     "telugu": {
       "newReleases": [
-        "oemj5iht",
         "i-4OQoee",
-        "NmXwIEDt",
         "i77wYuF6",
+        "NmXwIEDt",
         "04gTb-yb",
         "xfyBhOX4",
         "I5IxAtxg",
-        "ic76YbfK",
         "vkeWVESW",
+        "ic76YbfK",
         "nQAQm7ry",
         "114-aLc2",
-        "-iT5TuoT"
+        "-iT5TuoT",
+        "rN5VhdEe"
       ],
       "top50": [
-        "i77wYuF6",
         "04gTb-yb",
         "xfyBhOX4",
         "I5IxAtxg",
-        "ic76YbfK",
         "vkeWVESW",
+        "ic76YbfK",
         "nQAQm7ry",
         "114-aLc2",
         "-iT5TuoT",
         "rN5VhdEe",
         "iRvEHh6S",
         "tnR70xAZ",
-        "NddA-EA3",
         "7NIyhy3z",
-        "0jQi4RJN",
-        "OXfrepgP",
+        "NddA-EA3",
         "IjnxNKeR",
+        "OXfrepgP",
         "fxuoxZ18",
-        "_ZAsfN8t",
+        "0jQi4RJN",
         "qmy-b-O8",
         "mkC0cHKP",
+        "_ZAsfN8t",
         "bQlFM8hI",
-        "8zMlG0_z",
-        "-WAfjkWw",
         "8ByHXECV",
-        "FJ8l6JwW",
-        "FuATX2sL",
-        "A7AAUlh8",
+        "-WAfjkWw",
         "dVhcHsW9",
+        "FuATX2sL",
+        "FJ8l6JwW",
+        "A7AAUlh8",
+        "hY57xBAL",
         "SETu1Gik",
         "1YpmYatb",
-        "mw7_IcOp",
+        "8zMlG0_z",
         "lDnlQgKc",
         "oM52yM5X",
-        "iqh15kuU",
-        "hY57xBAL",
         "YRuU_7tl",
-        "aGWYcS5p",
+        "iqh15kuU",
         "mUOF1XAl",
-        "lrfkElyu",
-        "kCNofmYf",
-        "gZsIAUmO",
-        "T0T6gl3V",
-        "D37lA8I4",
+        "PN8KGyou",
         "HtoCuROi",
-        "kVG8O4dR",
+        "aGWYcS5p",
+        "EynItatL",
+        "kCNofmYf",
+        "T0T6gl3V",
+        "gZsIAUmO",
+        "D37lA8I4",
+        "jawIbT8E",
         "ME62tWDO",
-        "wFEDVOa8",
-        "1jtV5xZv",
-        "1kmL_AVz"
+        "1kmL_AVz",
+        "chQe6O8a",
+        "kVG8O4dR",
+        "32cR3f28"
       ],
       "collections": [
         {
@@ -3421,26 +3410,26 @@
             "qu6Qxjbo",
             "i8WsgLCW",
             "elKqtU3X",
-            "6kzxWMW2",
             "9H9n0Tgx",
+            "6kzxWMW2",
             "BgqPmnlD",
-            "tpVY5BKf",
             "0eqUIkMp",
             "lKLdvv7n",
             "qWV-T4lF",
-            "vlYvjJJ4",
             "mHVbHKV1",
             "yhAFv9Cs",
             "hxOqJxw4",
             "1OEZ6ozM",
-            "ITE4UZn9",
+            "vlYvjJJ4",
             "WvS5qy1u",
+            "ITE4UZn9",
             "OJjZOTOz",
             "q3rXyZA6",
             "52gXHZJ2",
+            "9iMMQMis",
             "sEb1nTAF",
-            "3Sdu0PCV",
-            "BHWe16yw"
+            "tpVY5BKf",
+            "3Sdu0PCV"
           ]
         },
         {
@@ -3453,31 +3442,31 @@
             "tnR70xAZ",
             "mkC0cHKP",
             "PN8KGyou",
+            "Xn7l87Dl",
             "QoBNLjWL",
             "Mc_uqWk7",
-            "Xn7l87Dl",
             "bAwj3d1S",
             "Wl20L1AB",
             "Y0ow2O8B",
-            "TPjKbsmF",
             "JQs6bedw",
+            "TPjKbsmF",
             "E6UTi6g9",
             "_Q6VJDy7",
             "6KCYJHd6",
             "ARuXdxyk",
             "fqkmDc1E",
             "yWdKpTMc",
-            "yU_Zx3mf",
             "giiMSaUI",
             "c5KUpEt0",
             "JGbDioLP",
-            "Bzg_kn5s",
             "pETnCteW",
+            "yU_Zx3mf",
+            "Bzg_kn5s",
+            "AWqAwJvd",
             "wPGsmZxU",
             "I7OTC4n3",
             "UUzKBtrK",
-            "AWqAwJvd",
-            "6VEejqR0"
+            "B8r6a-WH"
           ]
         },
         {
@@ -3490,30 +3479,30 @@
             "kCNofmYf",
             "gZsIAUmO",
             "ME62tWDO",
-            "nCiPAuWv",
             "41kck-zP",
+            "nCiPAuWv",
             "1aDtjsue",
             "SxMtW2hD",
             "CwB_FQDf",
             "kehuVn2F",
             "1xj-eQct",
             "KzIqP1Ah",
-            "TPjKbsmF",
             "aJrZwjc_",
+            "TPjKbsmF",
             "qNuCfvxU",
             "hIMaVuLz",
             "Mm_PiKF2",
             "AkTXwtI8",
             "DK808b4x",
             "SJf5HEs4",
-            "o3OcwOLA",
             "MiOQrnj0",
             "q6uYqEq6",
+            "o3OcwOLA",
             "KTxkVwWk",
-            "Lm4LYa7c",
             "MLnY_aNo",
-            "gfZ4vKNM",
+            "Lm4LYa7c",
             "nU984h6H",
+            "gfZ4vKNM",
             "HhVqZlxu"
           ]
         },
@@ -3523,8 +3512,8 @@
           "count": 8,
           "songIds": [
             "Mie1-qxG",
-            "E6UTi6g9",
             "2D-PCHJd",
+            "E6UTi6g9",
             "RHMXCd0s",
             "oUDUUmhe",
             "FVJbNjwe",
@@ -3541,102 +3530,102 @@
             "2eRgS8dv",
             "2YlfJoOU",
             "b-HezWPB",
-            "8hwV1pQS",
-            "lBK4owrL",
             "KChP4bjF",
+            "lBK4owrL",
+            "8hwV1pQS",
             "K9WWBY9W",
-            "ydB3pQgQ",
             "pZ4tsUIF",
+            "ydB3pQgQ",
             "U1A1J0bc",
             "70Zjv3lz",
-            "EfEnZHdw",
             "nR-cqqVl",
-            "SJ2WCdd1",
+            "EfEnZHdw",
             "VmaF9eGe",
-            "qUUGne_2",
+            "SJ2WCdd1",
             "TiulFla6",
+            "qUUGne_2",
             "Y_Hfxh1U",
             "atnuV1X6",
             "wB9ouO4l",
             "tLL3JJAv",
             "mTpt-G59",
             "vct_yYMQ",
+            "AZxUjUTk",
             "HUhcuIv9",
             "crH6ppYj",
-            "AZxUjUTk",
-            "kV14Tgbf",
-            "l52JGWt0",
-            "wtvLru-w"
+            "nIPkwdI3",
+            "pwJ3zTSV",
+            "kq7xa3xI"
           ]
         }
       ]
     },
     "hindi": {
       "newReleases": [
-        "0sOW_7Bj",
-        "Ss8Tgn5k",
         "6WbgAlYl",
-        "cOTfVYmU",
-        "_LuRVpwJ",
-        "gQsV3EzG",
+        "dq6oL2dA",
+        "TCu0tFIp",
         "zgPp6L5K",
+        "HFIok7C3",
+        "u4T9sYPy",
+        "Ss8Tgn5k",
+        "cOTfVYmU",
         "pO_hKTKW",
         "Hb9wBVGg",
-        "fTjge4Yw",
-        "psKIKaH7",
-        "FtgUddgv"
+        "gQsV3EzG",
+        "kltZsTYC"
       ],
       "top50": [
-        "0sOW_7Bj",
-        "Ss8Tgn5k",
         "6WbgAlYl",
-        "cOTfVYmU",
-        "_LuRVpwJ",
-        "gQsV3EzG",
+        "dq6oL2dA",
+        "TCu0tFIp",
         "zgPp6L5K",
+        "HFIok7C3",
+        "u4T9sYPy",
+        "Ss8Tgn5k",
+        "cOTfVYmU",
         "pO_hKTKW",
         "Hb9wBVGg",
+        "gQsV3EzG",
+        "kltZsTYC",
         "fTjge4Yw",
         "psKIKaH7",
+        "3NgzEJqd",
         "FtgUddgv",
-        "GC6HBHb8",
+        "KbqCvOn0",
+        "rnY6_16K",
         "SxoZvReX",
         "9wazC0po",
-        "rnY6_16K",
-        "KbqCvOn0",
+        "GC6HBHb8",
         "keGNxOoV",
-        "J94IV72D",
         "tSEDuO-H",
         "XF_fDU7l",
-        "HjlW6wyL",
         "ctT6mceW",
         "FUisMz1Z",
-        "ep78oThm",
         "flNQn6Z6",
         "emgZSZ4g",
         "MlFyq49-",
         "1Znu4ugZ",
-        "Ju6mYV25",
+        "J94IV72D",
         "a2AaFPQl",
+        "h1C-bImb",
+        "Ju6mYV25",
+        "qVIa1hba",
         "Bt07_OpM",
         "U3wEEo6F",
-        "G4TmIz-p",
+        "HjlW6wyL",
         "S5RCgz6O",
-        "h1C-bImb",
         "pui_ZPOL",
-        "pkPP2DLn",
         "PNHIkJPr",
         "XkEMoT_8",
         "BHBw6G6B",
         "YiVML4Zo",
-        "XBB7TAwU",
-        "kuE2xQar",
-        "1gHtmQ3x",
         "a5SkodXN",
-        "4NRpZd1v",
+        "1gHtmQ3x",
+        "pkPP2DLn",
+        "kuE2xQar",
         "Itm0k7b5",
-        "UCaiFj7O",
-        "ojfyzd2S"
+        "ep78oThm"
       ],
       "collections": [
         {
@@ -3654,9 +3643,8 @@
             "S5RCgz6O",
             "BHBw6G6B",
             "YiVML4Zo",
-            "1gHtmQ3x",
             "a5SkodXN",
-            "4NRpZd1v",
+            "1gHtmQ3x",
             "Itm0k7b5",
             "ojfyzd2S",
             "lmuBE22M",
@@ -3666,10 +3654,11 @@
             "emj1_g0f",
             "qZtKBMZ_",
             "PxiZdFH7",
+            "4NRpZd1v",
             "zCsuW9PN",
             "K8GXHF5k",
-            "-Y4hNkFa",
             "DMoLdwJ7",
+            "-Y4hNkFa",
             "IEuHNGVB",
             "_rJmbKSP",
             "zooHsCdH",
@@ -3679,25 +3668,24 @@
         {
           "title": "SRK Blockbusters",
           "subtitle": "Popular songs from Shah Rukh Khan films",
-          "count": 22,
+          "count": 21,
           "songIds": [
             "KbqCvOn0",
             "U3wEEo6F",
             "MzMUFL9_",
             "mfvkbvMu",
-            "b1l38k7M",
-            "HYcEc_8K",
-            "4LPjmU5w",
-            "Eng0tSqR",
             "v_fDB6dU",
+            "b1l38k7M",
+            "Eng0tSqR",
+            "HYcEc_8K",
             "aq84a-Ge",
-            "vCGmJRHU",
             "_yy47Njn",
+            "vCGmJRHU",
             "BQTtM2LJ",
-            "NCUGpKOW",
             "rFYxcSDU",
-            "faloMmjX",
+            "NCUGpKOW",
             "8g43YcY4",
+            "faloMmjX",
             "Vddo-avX",
             "Yv-9NmYK",
             "L0iv8k25",
@@ -3729,13 +3717,13 @@
           "subtitle": "Evergreen songs from Amitabh films",
           "count": 10,
           "songIds": [
-            "p2sV3-fP",
             "yF4l0auH",
             "nUZqiatb",
             "j69E-45A",
             "13bQVh6n",
             "HmNc7vXn",
             "BQTtM2LJ",
+            "p2sV3-fP",
             "Sm0l8aH3",
             "MGq5jAlo",
             "e0AJ9yAt"
@@ -3751,31 +3739,31 @@
             "keGNxOoV",
             "XF_fDU7l",
             "pui_ZPOL",
-            "pkPP2DLn",
             "XkEMoT_8",
+            "pkPP2DLn",
             "kuE2xQar",
             "B2GqEs2g",
             "B3kRx-l_",
-            "oCm00OUZ",
             "mlyNIODs",
-            "-Y4hNkFa",
             "DMoLdwJ7",
-            "WrWCDr_1",
-            "pAWzfxqU",
+            "-Y4hNkFa",
+            "oCm00OUZ",
             "0rYr57cr",
+            "pAWzfxqU",
+            "WrWCDr_1",
+            "3vbteb-P",
             "IhKbmgyP",
             "8WnSMP2m",
-            "3vbteb-P",
             "HmNc7vXn",
-            "cSjSy9vv",
             "peNXmheB",
             "3SIPCwH7",
+            "cSjSy9vv",
             "40QbaX8a",
             "QPBc7yAL",
-            "Yg3KQsIt",
             "8g43YcY4",
             "kOugAwel",
-            "DHIdp0A_"
+            "Yg3KQsIt",
+            "qmT9ttk9"
           ]
         },
         {
@@ -3786,16 +3774,16 @@
             "KbqCvOn0",
             "keGNxOoV",
             "XF_fDU7l",
-            "U3wEEo6F",
             "h1C-bImb",
-            "pkPP2DLn",
+            "U3wEEo6F",
             "PNHIkJPr",
+            "pkPP2DLn",
             "B3kRx-l_",
-            "eHqpcJH9",
             "Xrb08D6F",
             "42OIsTLs",
-            "MzMUFL9_",
+            "eHqpcJH9",
             "tK8LDnu-",
+            "MzMUFL9_",
             "9dC3d7Dg",
             "rDW7sAdV",
             "wtocOSI6",
@@ -3810,8 +3798,8 @@
             "mfvkbvMu",
             "OSufxv6I",
             "zooHsCdH",
-            "wtPJmOHH",
             "Q1E-eiRe",
+            "wtPJmOHH",
             "CPg5xoka"
           ]
         }
