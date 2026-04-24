@@ -5,6 +5,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { Mood, Song, UserSettings } from '@/lib/types';
 import { getEngine } from '@/lib/audio/engine';
 import { api } from '@/lib/api/client';
+import { pushHistoryLocal } from '@/lib/data/dexie';
 
 interface PlayerState {
   status: 'idle' | 'loading' | 'playing' | 'paused' | 'error';
@@ -43,6 +44,7 @@ export const usePlayer = create<PlayerState>()(
           onEnd: () => {
             const cur = get().current;
             if (cur) {
+              pushHistoryLocal(cur, true).catch(() => {});
               api.recordPlay(cur.id, true).catch(() => {});
             }
             void get().next();
@@ -85,6 +87,7 @@ export const usePlayer = create<PlayerState>()(
             }
           }
           await engine.play(song, nextSong);
+          pushHistoryLocal(song, false).catch(() => {});
           api.recordPlay(song.id, false).catch(() => {});
         },
 

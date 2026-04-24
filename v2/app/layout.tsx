@@ -1,10 +1,15 @@
 import type { Metadata, Viewport } from 'next';
 import { ClerkProvider } from '@clerk/nextjs';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import { Providers } from '@/lib/providers';
 import { fontClasses } from '@/lib/fonts';
 import { SiteFrame } from '@/components/SiteFrame';
 import { NowPlayingBar } from '@/components/NowPlayingBar';
 import { SmoothScroll } from '@/components/SmoothScroll';
+import { LibrarySync } from '@/components/LibrarySync';
+import { Analytics } from '@vercel/analytics/react';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -50,9 +55,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <body className="grain relative min-h-screen antialiased">
           <Providers>
             <SmoothScroll />
+            <LibrarySync />
             <SiteFrame>{children}</SiteFrame>
             <NowPlayingBar />
           </Providers>
+          <Analytics />
+          <SpeedInsights />
+          <Analytics />
+          <SpeedInsights />
         </body>
       </html>
     </ClerkProvider>

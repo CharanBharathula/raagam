@@ -6,7 +6,7 @@ import Image from 'next/image';
 import { Play, Pause, SkipForward, Heart } from 'lucide-react';
 import { usePlayer } from '@/lib/store/player';
 import { formatTime } from '@/lib/utils';
-import { useEffect, useState } from 'react';
+import { useLike } from '@/lib/hooks/useLike';
 
 export function NowPlayingBar() {
   const current = usePlayer((s) => s.current);
@@ -16,8 +16,7 @@ export function NowPlayingBar() {
   const toggle = usePlayer((s) => s.toggle);
   const next = usePlayer((s) => s.next);
 
-  const [liked, setLiked] = useState(false);
-  useEffect(() => setLiked(false), [current?.id]);
+  const { liked, toggle: toggleLike } = useLike(current);
 
   if (!current) return null;
   const pct = duration ? Math.min(100, (progress / duration) * 100) : 0;
@@ -70,7 +69,7 @@ export function NowPlayingBar() {
 
           <button
             type="button"
-            onClick={() => setLiked((v) => !v)}
+            onClick={toggleLike}
             className="shrink-0 p-2 text-cream-muted hover:text-magenta-glow transition-colors"
             aria-label={liked ? 'Unlike' : 'Like'}
           >

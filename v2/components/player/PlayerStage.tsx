@@ -5,7 +5,7 @@ import Image from 'next/image';
 import dynamic from 'next/dynamic';
 import { Heart, Pause, Play, SkipForward, Captions, MonitorPlay } from 'lucide-react';
 import { DownloadButton } from '@/components/DownloadButton';
-import { useState } from 'react';
+import { useLike } from '@/lib/hooks/useLike';
 import { usePlayer } from '@/lib/store/player';
 import { WaveScrubber } from './WaveScrubber';
 import { LyricsPanel } from './LyricsPanel';
@@ -28,7 +28,7 @@ export function PlayerStage() {
   const showVideo = usePlayer((s) => s.showVideo);
   const toggleVideo = usePlayer((s) => s.toggleVideo);
 
-  const [liked, setLiked] = useState(false);
+  const { liked, toggle: toggleLike } = useLike(song);
 
   if (!song) {
     return (
@@ -149,7 +149,7 @@ export function PlayerStage() {
             {/* Controls */}
             <div className="flex items-center gap-3">
               <IconBtn
-                onClick={() => setLiked((v) => !v)}
+                onClick={toggleLike}
                 active={liked}
                 activeColor="#E11D74"
                 label={liked ? 'Unlike' : 'Like'}

@@ -80,4 +80,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ songId, completed }),
     }),
+
+  library: () =>
+    request<{
+      liked: Array<{ song: Song; likedAt: number }>;
+      history: Array<{ song: Song; playedAt: number; completed: number }>;
+    }>('/me/library'),
 };

@@ -25,6 +25,7 @@ import { pickBlockbuster } from './pick';
 import { runNightlyEnrichment } from './enrichment';
 import { verifyClerkToken } from './auth';
 import { meiliConfigured, reindexMeili, searchMeili } from './meili';
+import { reportError } from './sentry';
 
 type AppEnv = { Bindings: Env; Variables: { userId?: string } };
 
@@ -256,6 +257,46 @@ app.post('/me/onboard', async (c) => {
   return c.json({ ok: true });
 });
 
+// Returns recent liked + history rows for device sync on app start.
+// Capped — no pagination needed, client merges into Dexie.
+app.get('/me/library', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'unauthorized' }, 401);
+
+  const [liked, history] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT s.*, l.liked_at
+         FROM likes l JOIN songs s ON s.id = l.song_id
+        WHERE l.user_id = ?
+        ORDER BY l.liked_at DESC
+        LIMIT 500`,
+    )
+      .bind(userId)
+      .all<SongRow & { liked_at: number }>(),
+    c.env.DB.prepare(
+      `SELECT s.*, h.played_at, h.completed
+         FROM history h JOIN songs s ON s.id = h.song_id
+        WHERE h.user_id = ?
+        ORDER BY h.played_at DESC
+        LIMIT 300`,
+    )
+      .bind(userId)
+      .all<SongRow & { played_at: number; completed: number }>(),
+  ]);
+
+  return c.json({
+    liked: (liked.results ?? []).map((r) => ({
+      song: rowToSong(r),
+      likedAt: r.liked_at * 1000,
+    })),
+    history: (history.results ?? []).map((r) => ({
+      song: rowToSong(r),
+      playedAt: r.played_at * 1000,
+      completed: r.completed,
+    })),
+  });
+});
+
 app.post('/me/settings', async (c) => {
   const userId = c.get('userId');
   if (!userId) return c.json({ error: 'unauthorized' }, 401);
@@ -386,6 +427,12 @@ async function ensureReady(env: Env, songId: string): Promise<void> {
   // Left intentionally lightweight.
 }
 
+app.onError((err, c) => {
+  reportError(err, c.executionCtx, c.env);
+  console.error('worker error', err);
+  return c.json({ error: 'internal_error' }, 500);
+});
+
 export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
@@ -394,7 +441,10 @@ export default {
         .then((r) => console.log('enrichment done', r))
         .then(() => (meiliConfigured(env) ? reindexMeili(env) : Promise.resolve({ sent: 0 })))
         .then((r) => console.log('meili reindex done', r))
-        .catch((e) => console.error('nightly failed', e)),
+        .catch((e) => {
+          reportError(e, ctx, env);
+          console.error('nightly failed', e);
+        }),
     );
   },
 };

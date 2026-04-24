@@ -1,4 +1,5 @@
 import withSerwistInit from '@serwist/next';
+import { withSentryConfig } from '@sentry/nextjs';
 
 const withSerwist = withSerwistInit({
   swSrc: 'app/sw.ts',
@@ -40,4 +41,20 @@ const nextConfig = {
   // we can inject the Clerk session token server-side.
 };
 
-export default withSerwist(nextConfig);
+const sentryEnabled =
+  !!process.env.SENTRY_AUTH_TOKEN &&
+  !!process.env.SENTRY_ORG &&
+  !!process.env.SENTRY_PROJECT;
+
+const composed = withSerwist(nextConfig);
+
+export default sentryEnabled
+  ? withSentryConfig(composed, {
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      silent: !process.env.CI,
+      widenClientFileUpload: true,
+      hideSourceMaps: true,
+      disableLogger: true,
+    })
+  : composed;

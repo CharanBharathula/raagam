@@ -8,6 +8,8 @@ export interface Env {
   WORKER_ADMIN_SECRET?: string;
   MEILI_HOST?: string;
   MEILI_ADMIN_KEY?: string;
+  SENTRY_DSN?: string;
+  ENVIRONMENT?: string;
 }
 
 export interface SongRow {
