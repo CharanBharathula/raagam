@@ -13,15 +13,22 @@ const isPublic = createRouteMatcher([
 const isOnboardingRoute = createRouteMatcher(['/onboarding', '/api/onboarded']);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublic(req)) {
-    await auth.protect();
+  const { userId, sessionClaims } = await auth();
+
+  // Gate protected routes explicitly — redirect unauthed users to /sign-in
+  // (Clerk's auth.protect() defaults to a 404 in middleware on v6, which
+  // we never want).
+  if (!isPublic(req) && !userId) {
+    const signIn = req.nextUrl.clone();
+    signIn.pathname = '/sign-in';
+    signIn.searchParams.set('redirect_url', req.nextUrl.pathname);
+    return NextResponse.redirect(signIn);
   }
 
-  const { userId, sessionClaims } = await auth();
   if (!userId) return NextResponse.next();
 
-  // Force fresh users through onboarding before they reach the rest of the app.
-  // `onboarded` is set in publicMetadata after /me/onboard completes.
+  // Force fresh users through onboarding before they reach the rest of
+  // the app. `onboarded` is set in publicMetadata after /me/onboard.
   const claims = sessionClaims as Record<string, unknown> | null;
   const publicMetadata = (claims?.publicMetadata ?? claims?.public_metadata) as
     | { onboarded?: boolean }
