@@ -5,6 +5,7 @@ export interface Env {
   LRCLIB_ENDPOINT: string;
   YT_PROXY_ENDPOINT: string;
   CLERK_JWT_ISSUER?: string;
+  WORKER_ADMIN_SECRET?: string;
   MEILI_ADMIN_KEY?: string;
 }
 

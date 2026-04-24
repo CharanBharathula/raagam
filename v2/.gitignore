@@ -10,5 +10,7 @@ scripts/out
 coverage
 playwright-report
 test-results
+public/sw.js
+public/swe-worker-*.js
 *.log
 .DS_Store

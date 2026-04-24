@@ -23,6 +23,7 @@ import type { Env } from './types';
 import { rowToSong, type SongRow, type TasteVector, safeParse } from './types';
 import { pickBlockbuster } from './pick';
 import { runNightlyEnrichment } from './enrichment';
+import { verifyClerkToken } from './auth';
 
 type AppEnv = { Bindings: Env; Variables: { userId?: string } };
 
@@ -170,6 +171,28 @@ app.get('/lyrics/:lyricsId', async (c) => {
   return c.json(payload);
 });
 
+// ---------- admin (invoked by Next.js webhook only) ----------
+app.post('/__admin/user', async (c) => {
+  const secret = c.req.header('x-admin-secret');
+  if (!secret || secret !== (c.env as Env & { WORKER_ADMIN_SECRET?: string }).WORKER_ADMIN_SECRET) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const body = await c.req.json<{ id: string; email?: string | null; display_name?: string | null }>();
+  if (!body.id) return c.json({ error: 'missing_id' }, 400);
+
+  await c.env.DB.prepare(
+    `INSERT INTO users (id, email, display_name) VALUES (?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         email        = COALESCE(excluded.email, users.email),
+         display_name = COALESCE(excluded.display_name, users.display_name),
+         updated_at   = unixepoch()`,
+  )
+    .bind(body.id, body.email ?? null, body.display_name ?? null)
+    .run();
+
+  return c.json({ ok: true });
+});
+
 // ---------- me ----------
 app.get('/me', async (c) => {
   const userId = c.get('userId');
@@ -187,6 +210,44 @@ app.get('/me', async (c) => {
       year_max: number;
     }>();
   return c.json({ user: row });
+});
+
+// Seed the user's taste_vector from an onboarding artist tap list.
+// Idempotent — replaces whatever was there (run once at sign-up).
+app.post('/me/onboard', async (c) => {
+  const userId = c.get('userId');
+  if (!userId) return c.json({ error: 'unauthorized' }, 401);
+  const body = await c.req.json<{
+    artists: string[];
+    langs: Array<'hindi' | 'telugu'>;
+    yearMin?: number;
+    yearMax?: number;
+  }>();
+
+  const artists = (body.artists ?? []).map((a) => a.trim().toLowerCase()).filter(Boolean).slice(0, 24);
+  const artistVec: Record<string, number> = {};
+  for (const a of artists) artistVec[a] = 8;
+
+  const langVec: Record<string, number> = {};
+  for (const l of body.langs ?? []) langVec[l] = 20;
+
+  const langBlend = body.langs?.length === 2 ? 0.6 : body.langs?.[0] === 'hindi' ? 0.9 : 0.1;
+  const taste = { artists: artistVec, decades: {}, moods: {}, langs: langVec };
+
+  await c.env.DB.prepare(
+    `INSERT INTO users (id, taste_vector, lang_blend, year_min, year_max)
+           VALUES (?, ?, ?, COALESCE(?, 2000), COALESCE(?, 2026))
+        ON CONFLICT(id) DO UPDATE SET
+           taste_vector = excluded.taste_vector,
+           lang_blend   = excluded.lang_blend,
+           year_min     = excluded.year_min,
+           year_max     = excluded.year_max,
+           updated_at   = unixepoch()`,
+  )
+    .bind(userId, JSON.stringify(taste), langBlend, body.yearMin ?? null, body.yearMax ?? null)
+    .run();
+
+  return c.json({ ok: true });
 });
 
 app.post('/me/settings', async (c) => {
@@ -304,12 +365,6 @@ function getDecade(year: number): string {
   if (year >= 2010) return '2010s';
   if (year >= 2000) return '2000s';
   return 'older';
-}
-
-async function verifyClerkToken(_token: string, _env: Env): Promise<string | null> {
-  // Stub — replaced when `CLERK_JWT_ISSUER` is wired via `wrangler secret put`.
-  // Real impl: fetch issuer's JWKS, verify RS256 signature, return `sub`.
-  return null;
 }
 
 // Opportunistic on-demand enrichment so the UI never sees `video_id=null`

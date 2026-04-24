@@ -7,7 +7,7 @@ const BASE = typeof window === 'undefined'
   ? process.env.NEXT_PUBLIC_WORKER_URL || 'http://127.0.0.1:8787'
   : '/api/proxy';
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
@@ -28,6 +28,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  request,
+
   pick: (req: PickRequest) =>
     request<PickResult>('/pick', { method: 'POST', body: JSON.stringify(req) }),
 

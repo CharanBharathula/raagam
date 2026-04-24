@@ -2,13 +2,20 @@
 
 import { AnimatePresence, motion } from 'framer-motion';
 import Image from 'next/image';
+import dynamic from 'next/dynamic';
 import { Heart, Pause, Play, SkipForward, Captions, MonitorPlay, Download } from 'lucide-react';
 import { useState } from 'react';
 import { usePlayer } from '@/lib/store/player';
-import { ParticleField } from './ParticleField';
 import { WaveScrubber } from './WaveScrubber';
 import { LyricsPanel } from './LyricsPanel';
 import { cn } from '@/lib/utils';
+
+// R3F + three.js is ~500 KB gzipped; load it only when the player opens
+// and never on the server (Canvas touches WebGL globals).
+const ParticleField = dynamic(
+  () => import('./ParticleField').then((m) => ({ default: m.ParticleField })),
+  { ssr: false, loading: () => null },
+);
 
 export function PlayerStage() {
   const song = usePlayer((s) => s.current);

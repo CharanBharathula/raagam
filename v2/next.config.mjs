@@ -1,3 +1,12 @@
+import withSerwistInit from '@serwist/next';
+
+const withSerwist = withSerwistInit({
+  swSrc: 'app/sw.ts',
+  swDest: 'public/sw.js',
+  disable: process.env.NODE_ENV === 'development',
+  reloadOnOnline: true,
+});
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -27,14 +36,8 @@ const nextConfig = {
       },
     ];
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/proxy/:path*',
-        destination: `${process.env.NEXT_PUBLIC_WORKER_URL || 'http://127.0.0.1:8787'}/:path*`,
-      },
-    ];
-  },
+  // Note: no rewrites — /api/proxy/[...path]/route.ts handles forwarding so
+  // we can inject the Clerk session token server-side.
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

@@ -12,6 +12,12 @@ export const metadata: Metadata = {
   description:
     'Telugu + Bollywood blockbusters, 2000 to 2026. Weighted discovery, synced lyrics, immersive player.',
   applicationName: 'Raagam',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { title: 'Raagam', statusBarStyle: 'black-translucent', capable: true },
+  icons: {
+    icon: '/icons/icon-192.png',
+    apple: '/icons/icon-192.png',
+  },
   openGraph: {
     title: 'Raagam',
     description: 'A music room for the night — Telugu + Bollywood blockbusters, 2000–2026.',
