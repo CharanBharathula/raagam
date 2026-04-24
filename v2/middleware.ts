@@ -7,7 +7,11 @@ const isPublic = createRouteMatcher([
   '/sign-up(.*)',
   '/offline',
   '/api/clerk/webhook',
-  '/api/proxy/health',
+  // The whole proxy is public — it forwards the Clerk session token to
+  // the Worker when present, so authed features still work; the Worker
+  // enforces auth on /me/* itself and returns generic results for
+  // anonymous /pick, /search, /new-releases, /moods, /lyrics.
+  '/api/proxy/(.*)',
 ]);
 
 const isOnboardingRoute = createRouteMatcher(['/onboarding', '/api/onboarded']);
