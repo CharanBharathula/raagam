@@ -7,12 +7,12 @@ compatibility_flags = ["nodejs_compat"]
 [[d1_databases]]
 binding = "DB"
 database_name = "raagam"
-database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+database_id = "ea6ef011-e1a9-453c-9311-d7b3d3fe3146"
 
 # KV for hot caches (video IDs, lyric lookups)
 [[kv_namespaces]]
 binding = "CACHE"
-id = "PLACEHOLDER_RUN_WRANGLER_KV_CREATE"
+id = "14f0a8dccb344787b8ce6d4fa3c0428b"
 
 # Scheduled enrichment cron — nightly at 03:17 UTC
 [triggers]

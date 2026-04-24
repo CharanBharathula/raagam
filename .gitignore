@@ -8,3 +8,4 @@ v2/.next/
 v2/.vercel/
 v2/.wrangler/
 v2/scripts/out/
+.wrangler/
