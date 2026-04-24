@@ -190,8 +190,7 @@ export class AudioEngine {
     // We tap once per song and keep the analyser singleton.
     try {
       if (!this.audioCtx) {
-        // @ts-expect-error — private Howler global
-        this.audioCtx = Howler.ctx ?? new AudioContext();
+        this.audioCtx = (Howler as unknown as { ctx?: AudioContext }).ctx ?? new AudioContext();
       }
       if (!this.analyser && this.audioCtx) {
         this.analyser = this.audioCtx.createAnalyser();

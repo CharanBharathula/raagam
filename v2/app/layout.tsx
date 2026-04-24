@@ -8,8 +8,6 @@ import { SiteFrame } from '@/components/SiteFrame';
 import { NowPlayingBar } from '@/components/NowPlayingBar';
 import { SmoothScroll } from '@/components/SmoothScroll';
 import { LibrarySync } from '@/components/LibrarySync';
-import { Analytics } from '@vercel/analytics/react';
-import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -59,8 +57,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <SiteFrame>{children}</SiteFrame>
             <NowPlayingBar />
           </Providers>
-          <Analytics />
-          <SpeedInsights />
           <Analytics />
           <SpeedInsights />
         </body>

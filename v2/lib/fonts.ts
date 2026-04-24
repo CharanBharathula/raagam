@@ -27,7 +27,7 @@ export const notoSansTelugu = Noto_Sans_Telugu({
 });
 
 export const hindSiliguri = Hind_Siliguri({
-  subsets: ['latin', 'devanagari'],
+  subsets: ['latin', 'bengali'],
   weight: ['300', '400', '500', '600', '700'],
   display: 'swap',
   variable: '--font-hindi',

@@ -42,12 +42,14 @@ function Particles({ count = 2200, color = '#F59E0B' }: { count?: number; color?
 
     if (!analyserRef.current) {
       analyserRef.current = getEngine().getAnalyser();
-      if (analyserRef.current) dataRef.current = new Uint8Array(analyserRef.current.frequencyBinCount);
+      if (analyserRef.current) {
+        dataRef.current = new Uint8Array(new ArrayBuffer(analyserRef.current.frequencyBinCount));
+      }
     }
     const a = analyserRef.current;
     const d = dataRef.current;
     if (a && d) {
-      a.getByteFrequencyData(d);
+      a.getByteFrequencyData(d as Uint8Array<ArrayBuffer>);
       let sum = 0;
       for (let i = 0; i < d.length; i++) sum += d[i];
       const avg = sum / d.length / 255;

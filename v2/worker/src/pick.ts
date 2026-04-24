@@ -28,8 +28,10 @@ const W_ERA = 0.6;
 const W_FRESH = 0.4;
 const W_TASTE = 1.2;
 const W_MOOD = 0.8;
-const PENALTY_ARTIST_RECENT = 10; // same lead artist in last 5 plays
-const PENALTY_ALBUM_RECENT = 15; // same album in last 10 plays
+// Multiplicative — anti-repeat must bite harder than any realistic
+// popularity gap, otherwise a chart-topper would play back-to-back.
+const MULT_ARTIST_RECENT = 0.4; // same lead artist in last 5 plays
+const MULT_ALBUM_RECENT = 0.25; // same album in last 10 plays
 
 const ERA_BOOST: Record<string, number> = {
   '2000s': 25,
@@ -174,30 +176,37 @@ function scoreSong(row: SongRow, ctx: ScoreCtx): number {
   // 3. Freshness — 2024..now gets an extra nudge
   if (row.year >= 2024) score += W_FRESH * (row.year - 2023) * 8;
 
-  // 4. Taste match
-  for (const [artist, hits] of Object.entries(ctx.taste.artists)) {
+  // 4. Taste match. A loved artist beats a popularity landslide — the
+  //    boost is multiplicative so "my guy's B-side" outranks "chart-topper
+  //    from someone I've never heard of".
+  let artistBoost = 1;
+  for (const [artist, hits] of Object.entries(ctx.taste.artists ?? {})) {
     if (artistsLc.includes(artist.toLowerCase())) {
-      score += W_TASTE * Math.min(hits, 20);
+      artistBoost = 1 + Math.min(hits, 20) * 0.1; // up to 3x
       break;
     }
   }
-  const decadeTaste = ctx.taste.decades[decade] ?? 0;
+  score *= artistBoost;
+
+  const decadeTaste = ctx.taste.decades?.[decade] ?? 0;
   score += W_TASTE * Math.min(decadeTaste, 30) * 0.3;
 
-  // 5. Mood match (if requested)
-  if (ctx.moods?.length && row.tags) {
-    const tags = safeParse<string[]>(row.tags, []);
+  // 5. Mood match (if requested). Downweight applies whether tags are
+  //    missing or they simply don't match — requesting "party" should not
+  //    surface unlabelled songs either.
+  if (ctx.moods?.length) {
+    const tags = row.tags ? safeParse<string[]>(row.tags, []) : [];
     const hit = ctx.moods.some((m) => tags.includes(m));
     if (hit) score += W_MOOD * 40;
-    else score *= 0.3; // strong deprioritisation if mood requested + no match
+    else score *= 0.3;
   }
 
   // 6. Language weight
   score *= ctx.langWeight[row.language] ?? 1;
 
-  // 7. Anti-repeat penalties
-  if (ctx.recentArtists.has(lead)) score -= PENALTY_ARTIST_RECENT;
-  if (album && ctx.recentAlbums.has(album)) score -= PENALTY_ALBUM_RECENT;
+  // 7. Anti-repeat penalties (multiplicative)
+  if (ctx.recentArtists.has(lead)) score *= MULT_ARTIST_RECENT;
+  if (album && ctx.recentAlbums.has(album)) score *= MULT_ALBUM_RECENT;
 
   return Math.max(0, score);
 }

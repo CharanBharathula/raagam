@@ -14,3 +14,6 @@ public/sw.js
 public/swe-worker-*.js
 *.log
 .DS_Store
+tsconfig.tsbuildinfo
+.next/
+next-env.d.ts

@@ -25,7 +25,7 @@ export async function downloadSong(
     }
   }
 
-  const blob = new Blob(chunks, {
+  const blob = new Blob(chunks as BlobPart[], {
     type: res.headers.get('content-type') ?? 'audio/mp4',
   });
   await saveDownload(song, blob);
