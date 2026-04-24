@@ -28,7 +28,10 @@ export function HomeBento() {
         years: [settings.yearMin, settings.yearMax],
         langBlend: settings.langBlend,
       });
-      await play(song);
+      // Fire playback in the background; don't block navigation on it.
+      // If the user isn't signed in, the /player navigation will bounce
+      // them to /sign-in via middleware — which is fine.
+      play(song).catch(() => {});
       window.location.assign('/player');
     } finally {
       setBusy(false);

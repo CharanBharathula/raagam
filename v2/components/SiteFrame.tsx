@@ -42,7 +42,7 @@ export function SiteFrame({ children }: { children: ReactNode }) {
 function DesktopSide({ pathname }: { pathname: string | null }) {
   return (
     <aside
-      className="fixed left-0 top-0 hidden h-screen w-[232px] flex-col border-r border-cream/5 glass-warm md:flex"
+      className="fixed left-0 top-0 z-30 hidden h-screen w-[232px] flex-col border-r border-cream/5 glass-warm md:flex"
       aria-label="Primary"
     >
       <div className="flex items-center gap-3 px-6 pt-8 pb-6">
