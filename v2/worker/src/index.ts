@@ -24,6 +24,7 @@ import { rowToSong, type SongRow, type TasteVector, safeParse } from './types';
 import { pickBlockbuster } from './pick';
 import { runNightlyEnrichment } from './enrichment';
 import { verifyClerkToken } from './auth';
+import { meiliConfigured, reindexMeili, searchMeili } from './meili';
 
 type AppEnv = { Bindings: Env; Variables: { userId?: string } };
 
@@ -128,15 +129,20 @@ app.get('/moods/:mood', async (c) => {
   return c.json({ songs: (rows.results ?? []).map(rowToSong) });
 });
 
-// ---------- search proxy ----------
+// ---------- search ----------
 app.get('/search', async (c) => {
-  const q = c.req.query('q') ?? '';
+  const q = (c.req.query('q') ?? '').trim();
   const lang = c.req.query('lang');
   const yearMin = Number(c.req.query('yearMin') ?? 2000);
   const yearMax = Number(c.req.query('yearMax') ?? 2026);
-  if (!q.trim()) return c.json({ songs: [] });
+  if (!q) return c.json({ songs: [] });
 
-  // D1 fallback (simple LIKE). Wire to Meilisearch when `MEILI_ADMIN_KEY` is set.
+  // Meilisearch path (typo-tolerant + ranked). Fall back to D1 LIKE.
+  if (meiliConfigured(c.env)) {
+    const hits = await searchMeili(c.env, { q, lang, yearMin, yearMax, limit: 50 });
+    if (hits) return c.json({ songs: hits, source: 'meili' });
+  }
+
   const like = `%${q}%`;
   const base = `SELECT * FROM songs
                   WHERE (name LIKE ? OR artists LIKE ? OR album LIKE ?)
@@ -147,7 +153,7 @@ app.get('/search', async (c) => {
     ? c.env.DB.prepare(sql).bind(like, like, like, yearMin, yearMax, lang)
     : c.env.DB.prepare(sql).bind(like, like, like, yearMin, yearMax);
   const rows = await stmt.all<SongRow>();
-  return c.json({ songs: (rows.results ?? []).map(rowToSong) });
+  return c.json({ songs: (rows.results ?? []).map(rowToSong), source: 'd1' });
 });
 
 // ---------- lyrics ----------
@@ -384,7 +390,11 @@ export default {
   fetch: app.fetch,
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(
-      runNightlyEnrichment(env).then((r) => console.log('enrichment done', r)),
+      runNightlyEnrichment(env)
+        .then((r) => console.log('enrichment done', r))
+        .then(() => (meiliConfigured(env) ? reindexMeili(env) : Promise.resolve({ sent: 0 })))
+        .then((r) => console.log('meili reindex done', r))
+        .catch((e) => console.error('nightly failed', e)),
     );
   },
 };

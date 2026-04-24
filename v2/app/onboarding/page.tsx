@@ -52,6 +52,8 @@ export default function OnboardingPage() {
           yearMax: years[1],
         }),
       });
+      // Flip Clerk publicMetadata.onboarded so middleware doesn't bounce us back.
+      await fetch('/api/onboarded', { method: 'POST', credentials: 'include' }).catch(() => {});
       // Sync to local store so the first pick reflects choice immediately.
       setSettings({
         yearMin: years[0],

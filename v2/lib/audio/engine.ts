@@ -11,6 +11,7 @@
 
 import { Howl, Howler } from 'howler';
 import type { Song } from '@/lib/types';
+import { getDownload } from '@/lib/data/dexie';
 
 export type EngineStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 
@@ -84,8 +85,11 @@ export class AudioEngine {
     this.current?.unload();
     this.current = null;
 
+    // If this song is downloaded, serve from Dexie blob so playback works offline.
+    const src = await resolveSrc(song);
+
     this.current = new Howl({
-      src: [song.audioUrl],
+      src: [src],
       html5: true,
       preload: true,
       volume: 0,
@@ -117,6 +121,8 @@ export class AudioEngine {
     if (this.nextSong?.id === song.id) return;
     this.next?.unload();
     this.nextSong = song;
+    // Async blob lookup would delay preload; use CDN URL for prefetch — if
+    // the user skips forward the `play` path re-checks Dexie for offline use.
     this.next = new Howl({ src: [song.audioUrl], html5: true, preload: true, volume: 0 });
   }
 
@@ -218,6 +224,16 @@ export class AudioEngine {
     navigator.mediaSession.setActionHandler('play', () => this.resume());
     navigator.mediaSession.setActionHandler('pause', () => this.pause());
   }
+}
+
+async function resolveSrc(song: Song): Promise<string> {
+  try {
+    const row = await getDownload(song.id);
+    if (row?.blob) return URL.createObjectURL(row.blob);
+  } catch {
+    // Dexie can fail in Safari private mode — fall back to CDN.
+  }
+  return song.audioUrl;
 }
 
 // Singleton — audio has one-at-a-time semantics app-wide.

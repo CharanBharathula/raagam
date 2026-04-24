@@ -26,4 +26,6 @@ YT_PROXY_ENDPOINT = "https://pipedapi.kavin.rocks"
 # Secrets (do not commit values):
 #   wrangler secret put YOUTUBE_API_KEY
 #   wrangler secret put CLERK_JWT_ISSUER
+#   wrangler secret put WORKER_ADMIN_SECRET
+#   wrangler secret put MEILI_HOST
 #   wrangler secret put MEILI_ADMIN_KEY

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { usePlayer } from '@/lib/store/player';
 import { formatTime } from '@/lib/utils';
+import { ensurePeaks } from '@/lib/audio/peaks';
 
 /**
  * Synthetic waveform — 120 bars with pseudo-random heights seeded from
@@ -19,10 +20,26 @@ export function WaveScrubber() {
 
   const ref = useRef<HTMLDivElement>(null);
   const [hoverPct, setHoverPct] = useState<number | null>(null);
+  const [peaks, setPeaks] = useState<number[] | null>(null);
 
   const pct = duration ? (progress / duration) * 100 : 0;
 
-  const bars = useWaveBars(current?.id ?? 'none', 120);
+  // Fetch real waveform peaks in the background; fall back to pseudo-random
+  // until they arrive. First play: ~200 ms decode; subsequent plays: instant.
+  useEffect(() => {
+    let cancel = false;
+    setPeaks(null);
+    if (!current) return;
+    ensurePeaks(current.id, current.audioUrl).then((p) => {
+      if (!cancel && p) setPeaks(p);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [current]);
+
+  const fallbackBars = useWaveBars(current?.id ?? 'none', 120);
+  const bars = peaks ?? fallbackBars;
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!ref.current || !duration) return;

@@ -6,6 +6,7 @@ export interface Env {
   YT_PROXY_ENDPOINT: string;
   CLERK_JWT_ISSUER?: string;
   WORKER_ADMIN_SECRET?: string;
+  MEILI_HOST?: string;
   MEILI_ADMIN_KEY?: string;
 }
 

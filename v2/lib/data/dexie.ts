@@ -32,11 +32,18 @@ export interface LyricsRow {
   cachedAt: number;
 }
 
+export interface PeaksRow {
+  id: string;           // song id
+  peaks: number[];      // normalised 0..1, length 120
+  cachedAt: number;
+}
+
 class RaagamDB extends Dexie {
   liked!: Table<LikedRow, string>;
   history!: Table<HistoryRow, number>;
   downloads!: Table<DownloadRow, string>;
   lyrics!: Table<LyricsRow, number>;
+  peaks!: Table<PeaksRow, string>;
 
   constructor() {
     super('raagam-v2');
@@ -45,6 +52,13 @@ class RaagamDB extends Dexie {
       history: '++id, songId, playedAt',
       downloads: 'id, downloadedAt, bytes',
       lyrics: 'id, cachedAt',
+    });
+    this.version(2).stores({
+      liked: 'id, likedAt',
+      history: '++id, songId, playedAt',
+      downloads: 'id, downloadedAt, bytes',
+      lyrics: 'id, cachedAt',
+      peaks: 'id, cachedAt',
     });
   }
 }
@@ -106,4 +120,38 @@ export async function cacheLyrics(id: number, plain: string | null, synced: stri
 
 export async function getCachedLyrics(id: number): Promise<LyricsRow | undefined> {
   return getDB().lyrics.get(id);
+}
+
+export async function getPeaks(id: string): Promise<number[] | null> {
+  const r = await getDB().peaks.get(id);
+  return r?.peaks ?? null;
+}
+
+export async function savePeaks(id: string, peaks: number[]): Promise<void> {
+  await getDB().peaks.put({ id, peaks, cachedAt: Date.now() });
+}
+
+// ---------- downloads (offline audio) ----------
+
+export async function saveDownload(song: Song, blob: Blob): Promise<void> {
+  await getDB().downloads.put({
+    id: song.id,
+    song,
+    blob,
+    bytes: blob.size,
+    downloadedAt: Date.now(),
+  });
+}
+
+export async function getDownload(id: string): Promise<DownloadRow | undefined> {
+  return getDB().downloads.get(id);
+}
+
+export async function deleteDownload(id: string): Promise<void> {
+  await getDB().downloads.delete(id);
+}
+
+export async function totalDownloadedBytes(): Promise<number> {
+  const rows = await getDB().downloads.toArray();
+  return rows.reduce((n, r) => n + r.bytes, 0);
 }

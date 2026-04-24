@@ -1,17 +1,40 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
 const isPublic = createRouteMatcher([
   '/',
   '/sign-in(.*)',
   '/sign-up(.*)',
-  '/api/public/(.*)',
+  '/offline',
+  '/api/clerk/webhook',
   '/api/proxy/health',
 ]);
+
+const isOnboardingRoute = createRouteMatcher(['/onboarding', '/api/onboarded']);
 
 export default clerkMiddleware(async (auth, req) => {
   if (!isPublic(req)) {
     await auth.protect();
   }
+
+  const { userId, sessionClaims } = await auth();
+  if (!userId) return NextResponse.next();
+
+  // Force fresh users through onboarding before they reach the rest of the app.
+  // `onboarded` is set in publicMetadata after /me/onboard completes.
+  const claims = sessionClaims as Record<string, unknown> | null;
+  const publicMetadata = (claims?.publicMetadata ?? claims?.public_metadata) as
+    | { onboarded?: boolean }
+    | undefined;
+  const onboarded = publicMetadata?.onboarded === true;
+
+  if (!onboarded && !isOnboardingRoute(req) && !isPublic(req)) {
+    const url = req.nextUrl.clone();
+    url.pathname = '/onboarding';
+    return NextResponse.redirect(url);
+  }
+
+  return NextResponse.next();
 });
 
 export const config = {

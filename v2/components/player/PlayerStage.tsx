@@ -3,7 +3,8 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import Image from 'next/image';
 import dynamic from 'next/dynamic';
-import { Heart, Pause, Play, SkipForward, Captions, MonitorPlay, Download } from 'lucide-react';
+import { Heart, Pause, Play, SkipForward, Captions, MonitorPlay } from 'lucide-react';
+import { DownloadButton } from '@/components/DownloadButton';
 import { useState } from 'react';
 import { usePlayer } from '@/lib/store/player';
 import { WaveScrubber } from './WaveScrubber';
@@ -176,9 +177,7 @@ export function PlayerStage() {
 
               <div className="flex-1" />
 
-              <IconBtn onClick={() => {}} label="Download">
-                <Download size={18} />
-              </IconBtn>
+              <DownloadButton song={song} />
             </div>
           </div>
         </div>
