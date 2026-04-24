@@ -2,3 +2,9 @@ userdata/
 __pycache__/
 *.pyc
 .DS_Store
+.claude/
+v2/node_modules/
+v2/.next/
+v2/.vercel/
+v2/.wrangler/
+v2/scripts/out/

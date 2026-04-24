@@ -1,0 +1,29 @@
+name = "raagam-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-20"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 database binding
+[[d1_databases]]
+binding = "DB"
+database_name = "raagam"
+database_id = "PLACEHOLDER_RUN_WRANGLER_D1_CREATE"
+
+# KV for hot caches (video IDs, lyric lookups)
+[[kv_namespaces]]
+binding = "CACHE"
+id = "PLACEHOLDER_RUN_WRANGLER_KV_CREATE"
+
+# Scheduled enrichment cron — nightly at 03:17 UTC
+[triggers]
+crons = ["17 3 * * *"]
+
+# Vars are non-secret config; use `wrangler secret put` for real secrets.
+[vars]
+LRCLIB_ENDPOINT = "https://lrclib.net/api"
+YT_PROXY_ENDPOINT = "https://pipedapi.kavin.rocks"
+
+# Secrets (do not commit values):
+#   wrangler secret put YOUTUBE_API_KEY
+#   wrangler secret put CLERK_JWT_ISSUER
+#   wrangler secret put MEILI_ADMIN_KEY
